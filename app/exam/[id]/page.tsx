@@ -23,9 +23,19 @@ export default function ExamScreen() {
   const [cameraActive, setCameraActive] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showBigAlert, setShowBigAlert] = useState<any>(null);
   
   const webcamRef = useRef<Webcam>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Watch for new warnings to show big alert
+  useEffect(() => {
+    if (warnings.length > 0) {
+      setShowBigAlert(warnings[0]);
+      const timer = setTimeout(() => setShowBigAlert(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [warnings]);
 
   const questions = [
     { id: 1, text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"] },
@@ -98,19 +108,32 @@ export default function ExamScreen() {
   useEffect(() => {
     if (!examStarted || !isExamActive || !cameraActive) return;
 
+    // Fast detection interval (every 1 second instead of 5)
     const proctorInterval = setInterval(() => {
       // Simulate random AI detections for demo purposes
       const rand = Math.random();
-      if (rand > 0.95) {
+      if (rand > 0.98) {
         addWarning("Head movement detected (looking away)", "medium");
-      } else if (rand > 0.98) {
-        addWarning("Multiple faces detected", "critical");
       } else if (rand > 0.99) {
+        addWarning("Multiple faces detected", "critical");
+      } else if (rand > 0.995) {
         addWarning("No face detected", "high");
       }
-    }, 5000);
+    }, 1000);
 
-    return () => clearInterval(proctorInterval);
+    // Instant mouse leave detection
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY <= 0 || e.clientX <= 0 || (e.clientX >= window.innerWidth || e.clientY >= window.innerHeight)) {
+        addWarning("Mouse cursor left the exam window", "high");
+      }
+    };
+
+    document.addEventListener("mouseleave", handleMouseLeave);
+
+    return () => {
+      clearInterval(proctorInterval);
+      document.removeEventListener("mouseleave", handleMouseLeave);
+    };
   }, [examStarted, isExamActive, cameraActive, addWarning]);
 
   const startExam = async () => {
@@ -387,15 +410,27 @@ export default function ExamScreen() {
                       No suspicious activity detected.
                     </motion.div>
                   ) : (
-                    warnings.map((warning, idx) => (
+                    warnings.map((warning) => (
                       <motion.div
-                        key={`${warning}-${idx}`}
+                        key={warning.id}
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className="bg-red-50 border border-red-100 text-red-800 text-xs p-3 rounded-lg flex items-start gap-2 shadow-sm"
+                        className={`border text-xs p-3 rounded-lg flex flex-col gap-1 shadow-sm ${
+                          warning.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' :
+                          warning.severity === 'high' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                          'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}
                       >
-                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                        <span className="font-medium leading-tight">{warning}</span>
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                            warning.severity === 'critical' ? 'text-red-500' :
+                            warning.severity === 'high' ? 'text-orange-500' : 'text-amber-500'
+                          }`} />
+                          <span className="font-medium leading-tight flex-1">{warning.message}</span>
+                        </div>
+                        <span className="text-[10px] opacity-70 ml-6 font-mono">
+                          {new Date(warning.timestamp).toLocaleTimeString()}
+                        </span>
                       </motion.div>
                     ))
                   )}
@@ -426,6 +461,40 @@ export default function ExamScreen() {
           </Card>
         </div>
       )}
+
+      {/* Big Warning Alert Overlay */}
+      <AnimatePresence>
+        {showBigAlert && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.1 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none p-6"
+          >
+            <div className="absolute inset-0 bg-red-900/20 backdrop-blur-sm" />
+            <div className="bg-white border-4 border-red-500 rounded-2xl p-8 max-w-2xl w-full shadow-2xl relative flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                <AlertTriangle className="w-10 h-10 text-red-600" />
+              </div>
+              <h2 className="text-3xl font-bold text-slate-900 mb-2">Rule Violation Detected</h2>
+              <p className="text-xl text-red-600 font-medium mb-6">{showBigAlert.message}</p>
+              <div className="bg-slate-100 p-4 rounded-lg w-full">
+                <p className="text-slate-600 font-medium">
+                  Please correct this immediately to avoid exam termination.
+                </p>
+                <div className="mt-4 h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: "100%" }} 
+                    animate={{ width: "0%" }} 
+                    transition={{ duration: 3, ease: "linear" }}
+                    className="h-full bg-red-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

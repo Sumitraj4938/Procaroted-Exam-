@@ -21,9 +21,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => set({ user: null }),
 }));
 
+export interface WarningDetail {
+  id: string;
+  message: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+}
+
 interface ExamState {
   cheatingScore: number;
-  warnings: string[];
+  warnings: WarningDetail[];
   addWarning: (warning: string, severity?: 'low' | 'medium' | 'high' | 'critical') => void;
   resetExamState: () => void;
   isExamActive: boolean;
@@ -45,12 +52,32 @@ export const useExamStore = create<ExamState>((set) => ({
     }
     
     // Prevent duplicate warnings within a short time frame (simplified)
-    if (state.warnings.length > 0 && state.warnings[0] === warning) {
-      return state;
+    if (state.warnings.length > 0 && state.warnings[0].message === warning) {
+      const lastWarningTime = new Date(state.warnings[0].timestamp).getTime();
+      if (Date.now() - lastWarningTime < 3000) {
+        return state; // Ignore if same warning happened < 3 seconds ago
+      }
     }
 
+    // Trigger Text-to-Speech Announcement
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      // Cancel any ongoing speech to prioritize the new warning
+      window.speechSynthesis.cancel();
+      const msg = new SpeechSynthesisUtterance(`Warning: ${warning}. Please fix this immediately.`);
+      msg.rate = 1.1;
+      msg.pitch = 1.2;
+      window.speechSynthesis.speak(msg);
+    }
+
+    const newWarning: WarningDetail = {
+      id: Math.random().toString(36).substring(7),
+      message: warning,
+      severity,
+      timestamp: new Date().toISOString(),
+    };
+
     return {
-      warnings: [warning, ...state.warnings].slice(0, 5), // Keep last 5 warnings
+      warnings: [newWarning, ...state.warnings].slice(0, 10), // Keep last 10 warnings
       cheatingScore: Math.min(100, state.cheatingScore + scoreIncrease),
     };
   }),
