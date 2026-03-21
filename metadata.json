@@ -1,0 +1,5 @@
+{
+  "name": "AI Proctored Exam System",
+  "description": "Secure online exam platform with real-time AI proctoring, face detection, and cheating prevention.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
