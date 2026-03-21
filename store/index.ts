@@ -12,14 +12,12 @@ interface User {
 interface AuthState {
   user: User | null;
   setUser: (user: User | null) => void;
-  login: (email: string, role: UserRole) => void;
   logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   setUser: (user) => set({ user }),
-  login: (email, role) => set({ user: { id: 'user-123', email, role, fullName: email.split('@')[0] } }),
   logout: () => set({ user: null }),
 }));
 
