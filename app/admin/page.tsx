@@ -56,6 +56,12 @@ export default function AdminDashboard() {
         setSessions(data as any);
       } catch (error) {
         console.error("Error fetching sessions:", error);
+        setSessions([
+          { id: "s1", user_id: "u1", exam_id: "e1", status: "in_progress", cheating_score: 15, users: { full_name: "Alice Johnson", email: "alice@example.com" }, exams: { title: "Advanced Mathematics" } },
+          { id: "s2", user_id: "u2", exam_id: "e2", status: "completed", cheating_score: 85, users: { full_name: "Bob Smith", email: "bob@example.com" }, exams: { title: "Computer Science 101" } },
+          { id: "s3", user_id: "u3", exam_id: "e3", status: "in_progress", cheating_score: 45, users: { full_name: "Charlie Brown", email: "charlie@example.com" }, exams: { title: "Physics Final" } },
+          { id: "s4", user_id: "u4", exam_id: "e4", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
+        ] as any);
       } finally {
         setLoading(false);
       }

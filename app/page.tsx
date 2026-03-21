@@ -25,6 +25,19 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    // --- GUARANTEED ACCESS FOR REQUESTED CREDENTIALS ---
+    if (email === "sumitraj4938@gmail.com" && password === "Sumit@4938") {
+      setUser({ id: "student-mock-id", email, role: "student", fullName: "Sumit Raj" });
+      router.push("/dashboard");
+      return;
+    }
+    if (email === "sumitraj4939@gmail.com" && password === "Sumit@4939") {
+      setUser({ id: "admin-mock-id", email, role: "admin", fullName: "Sumit Raj (Admin)" });
+      router.push("/admin");
+      return;
+    }
+    // ---------------------------------------------------
+
     try {
       // Query Supabase for the user with matching email and password
       const { data: userData, error: fetchError } = await supabase
@@ -33,6 +46,10 @@ export default function LoginPage() {
         .eq('email', email)
         .eq('password', password)
         .single();
+
+      if (fetchError) {
+        console.error("Supabase fetch error:", fetchError);
+      }
 
       if (fetchError || !userData) {
         setError("Invalid email or password.");
