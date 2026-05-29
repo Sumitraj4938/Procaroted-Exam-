@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS users CASCADE;
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL DEFAULT 'password',
     role TEXT CHECK (role IN ('student', 'admin')) DEFAULT 'student',
     full_name TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -68,7 +69,8 @@ CREATE TABLE violations (
     description TEXT,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     video_timestamp_seconds INTEGER, -- For video playback sync
-    severity TEXT CHECK (severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'low'
+    severity TEXT CHECK (severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'low',
+    screenshot TEXT -- base64 data-url or attachment url of the exact violation frame
 );
 
 -- Enable Row Level Security (RLS)
