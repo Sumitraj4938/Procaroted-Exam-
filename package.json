@@ -1,7 +1,8 @@
 {
-  "name": "ai-studio-applet",
+  "name": "ai-proctored-exam-system",
   "version": "0.1.0",
   "private": true,
+  "author": "Shivam Raj",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

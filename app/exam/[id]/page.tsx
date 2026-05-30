@@ -232,7 +232,7 @@ export default function ExamScreen() {
     }
   }, [addWarning, saveViolation]);
 
-  // Real-Time Gemini AI Proctoring Loop (every 3 seconds)
+  // Real-Time AI Proctoring Loop (every 3 seconds)
   useEffect(() => {
     if (!examStarted || !isExamActive || !cameraActive) return;
 
@@ -268,7 +268,7 @@ export default function ExamScreen() {
           secondary: screenshot2
         });
 
-        // Call the server-side API proxy for multimodal Gemini dual-camera analysis
+        // Call the server-side API proxy for multimodal dual-camera analysis
         const response = await fetch("/api/proctor/detect", {
           method: "POST",
           headers: {

@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
-// Initialize Gemini client server-side
+// Initialize AI client server-side
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Call the fast gemini-3.5-flash model
+    // Call the AI model
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: [
