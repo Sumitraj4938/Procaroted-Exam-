@@ -13,6 +13,10 @@ const ai = new GoogleGenAI({
 
 async function getBase64FromInput(input: string): Promise<string> {
   if (!input) return "";
+  if (input === "simulated") {
+    // High-performance transparent fallback to keep simulated camera loop fast & reliable
+    return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  }
   if (input.startsWith("http://") || input.startsWith("https://")) {
     try {
       const res = await fetch(input);
@@ -102,7 +106,11 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    const resultText = response.text || "{}";
+    let resultText = response.text || "{}";
+    // Sanitize any markdown JSON codeblock markers if present
+    if (resultText.includes("```")) {
+      resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
+    }
     const data = JSON.parse(resultText);
 
     return NextResponse.json(data);

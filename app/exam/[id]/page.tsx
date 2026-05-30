@@ -22,7 +22,7 @@ export default function ExamScreen() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraActive, setCameraActive] = useState(true);
   const [examStarted, setExamStarted] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showBigAlert, setShowBigAlert] = useState<any>(null);
@@ -495,6 +495,7 @@ export default function ExamScreen() {
                   <Webcam
                     audio={false}
                     ref={webcamRef1}
+                    screenshotFormat="image/jpeg"
                     videoConstraints={{ deviceId: { exact: selectedCameraId1 } }}
                     className="w-full h-full object-cover rounded-lg"
                     mirrored
@@ -532,6 +533,7 @@ export default function ExamScreen() {
                   <Webcam
                     audio={false}
                     ref={webcamRef2}
+                    screenshotFormat="image/jpeg"
                     videoConstraints={{ deviceId: { exact: selectedCameraId2 } }}
                     className="w-full h-full object-cover rounded-lg"
                     mirrored
@@ -698,6 +700,7 @@ export default function ExamScreen() {
                 <Webcam
                   audio={false}
                   ref={webcamRef1}
+                  screenshotFormat="image/jpeg"
                   videoConstraints={{ deviceId: { exact: selectedCameraId1 } }}
                   className="w-full h-full object-cover"
                   mirrored
@@ -733,6 +736,7 @@ export default function ExamScreen() {
                 <Webcam
                   audio={false}
                   ref={webcamRef2}
+                  screenshotFormat="image/jpeg"
                   videoConstraints={{ deviceId: { exact: selectedCameraId2 } }}
                   className="w-full h-full object-cover"
                   mirrored
