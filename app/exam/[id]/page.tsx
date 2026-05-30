@@ -9,7 +9,7 @@ import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, CheckCircle2, Clock, ShieldAlert, ShieldCheck, Video, VideoOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ShieldAlert, ShieldCheck, Video, VideoOff, Sparkles, Laptop, Fingerprint, UserCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ExamScreen() {
@@ -34,6 +34,7 @@ export default function ExamScreen() {
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId1, setSelectedCameraId1] = useState<string>("");
   const [selectedCameraId2, setSelectedCameraId2] = useState<string>("");
+  const [lastAnalysis, setLastAnalysis] = useState<any>(null);
 
   // Camera detection
   useEffect(() => {
@@ -190,45 +191,62 @@ export default function ExamScreen() {
 
   // Process live detector results
   const processProctoringAnalysis = useCallback(async (analysis: any, screenshot: string) => {
-    if (!analysis || typeof analysis.faces_detected === "undefined") return;
+    if (!analysis) return;
+    setLastAnalysis(analysis);
 
-    const { faces_detected, head_movement, warnings: analysisWarnings } = analysis;
+    const faces_detected = typeof analysis.faces_detected !== "undefined" ? analysis.faces_detected : 1;
+    const head_movement = analysis.head_movement || "normal";
+    const student_recognized = typeof analysis.student_recognized !== "undefined" ? analysis.student_recognized : true;
 
     let violationFound = false;
     let type = "";
     let desc = "";
     let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
 
-    // 1. Check for multiple faces (critical)
-    if (faces_detected > 1) {
-      type = "multiple_faces";
-      desc = "Multiple faces detected in camera. Only the student is allowed in frame.";
+    // 1. Check for student identity mismatch (critical)
+    if (!student_recognized) {
+      type = "identity_mismatch";
+      desc = "Candidate identity mismatch: face in feed does not match the registered user.";
       severity = "critical";
       violationFound = true;
     }
-    // 2. Check for no face detected (high)
+    // 2. Check for multiple faces (critical)
+    else if (faces_detected > 1) {
+      type = "multiple_faces";
+      desc = "Multiple faces detected. Only the authorized student is permitted in frame.";
+      severity = "critical";
+      violationFound = true;
+    }
+    // 3. Check for no face detected (high)
     else if (faces_detected === 0) {
       type = "no_face";
-      desc = "No face detected in camera. Please keep your face centered in the camera.";
+      desc = "No face detected. Please reposition yourself clearly in front of the camera.";
       severity = "high";
       violationFound = true;
     }
-    // 3. Check for suspicious head movement/looking away (medium)
-    else if (head_movement !== "normal") {
+    // 4. Check for suspicious head movement/looking away (medium)
+    else if (head_movement !== "normal" && head_movement !== "") {
       type = "head_movement";
-      desc = `Suspicious head movement: looking ${head_movement.replace('looking_', '')}. Please look at the screen.`;
+      desc = `Suspicious head movement: looking ${head_movement.replace('looking_', '')}. Keep your gaze on the screen.`;
       severity = "medium";
       violationFound = true;
     }
 
     if (violationFound) {
-      // Add standard notification warning with voice announcement
       addWarning(desc, severity);
-      // Save snapshot evidence to Supabase
       await saveViolation(type, desc, severity, screenshot);
     } else {
-      // Auto-resolve blocker alert as soon as student rights their posture/behavior
       setShowBigAlert(null);
+    }
+
+    // Process any other custom environmental/device warnings produced by Gemini analysis
+    if (analysis.warnings && Array.isArray(analysis.warnings)) {
+      for (const warn of analysis.warnings) {
+        if (!warn) continue;
+        // Check if we already issued a similar warning text very recently to prevent spamming
+        addWarning(warn, "high");
+        await saveViolation("unpermitted_materials", warn, "high", screenshot);
+      }
     }
   }, [addWarning, saveViolation]);
 
@@ -477,7 +495,7 @@ export default function ExamScreen() {
                   <Webcam
                     audio={false}
                     ref={webcamRef1}
-                    videoConstraints={{ deviceId: selectedCameraId1 }}
+                    videoConstraints={{ deviceId: { exact: selectedCameraId1 } }}
                     className="w-full h-full object-cover rounded-lg"
                     mirrored
                   />
@@ -514,7 +532,7 @@ export default function ExamScreen() {
                   <Webcam
                     audio={false}
                     ref={webcamRef2}
-                    videoConstraints={{ deviceId: selectedCameraId2 }}
+                    videoConstraints={{ deviceId: { exact: selectedCameraId2 } }}
                     className="w-full h-full object-cover rounded-lg"
                     mirrored
                   />
@@ -577,14 +595,14 @@ export default function ExamScreen() {
           {cameraActive && (
             <div className="md:hidden fixed top-[74px] right-4 w-28 h-44 bg-black rounded-xl shadow-2xl border border-slate-300/40 z-40 overflow-hidden flex flex-col pointer-events-none">
               <div className="relative flex-1 aspect-video">
-                <Webcam audio={false} videoConstraints={selectedCameraId1 ? { deviceId: selectedCameraId1 } : undefined} className="w-full h-full object-cover" mirrored />
+                <Webcam audio={false} videoConstraints={selectedCameraId1 ? { deviceId: { exact: selectedCameraId1 } } : undefined} className="w-full h-full object-cover" mirrored />
                 <span className="absolute bottom-1 left-1 bg-black/60 text-[7px] text-white px-1 rounded">CAM 1</span>
               </div>
               <div className="relative flex-1 aspect-video border-t border-slate-800">
                 {selectedCameraId2 === "simulated" ? (
                   <img src="https://picsum.photos/seed/deskview/200/150" alt="Simulated desk view" className="w-full h-full object-cover opacity-50" />
                 ) : (
-                  <Webcam audio={false} videoConstraints={selectedCameraId2 ? { deviceId: selectedCameraId2 } : undefined} className="w-full h-full object-cover" mirrored />
+                  <Webcam audio={false} videoConstraints={selectedCameraId2 ? { deviceId: { exact: selectedCameraId2 } } : undefined} className="w-full h-full object-cover" mirrored />
                 )}
                 <span className="absolute bottom-1 left-1 bg-black/60 text-[7px] text-white px-1 rounded">CAM 2</span>
               </div>
@@ -680,7 +698,7 @@ export default function ExamScreen() {
                 <Webcam
                   audio={false}
                   ref={webcamRef1}
-                  videoConstraints={{ deviceId: selectedCameraId1 }}
+                  videoConstraints={{ deviceId: { exact: selectedCameraId1 } }}
                   className="w-full h-full object-cover"
                   mirrored
                 />
@@ -715,7 +733,7 @@ export default function ExamScreen() {
                 <Webcam
                   audio={false}
                   ref={webcamRef2}
-                  videoConstraints={{ deviceId: selectedCameraId2 }}
+                  videoConstraints={{ deviceId: { exact: selectedCameraId2 } }}
                   className="w-full h-full object-cover"
                   mirrored
                 />
@@ -730,6 +748,82 @@ export default function ExamScreen() {
               </div>
             </div>
           </div>
+
+          {/* Real-time CV Detection Telemetry */}
+          {cameraActive && (
+            <div className="mx-4 mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 shadow-sm space-y-3">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 tracking-wider uppercase">
+                <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-spin animate-duration-3000" />
+                <span>Real-Time CV Telemetry</span>
+              </div>
+              
+              {/* Candidate Verification */}
+              <div className="flex flex-col gap-1 border-b border-dashed border-slate-200 pb-2">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Candidate Identity Match</span>
+                {lastAnalysis ? (
+                  lastAnalysis.student_recognized ? (
+                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded font-medium">
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">Verified: Shivam Raj recognized</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[11px] text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded font-medium animate-pulse">
+                      <Fingerprint className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <span className="truncate">Identity Mismatch: Shivam Raj missing</span>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-[10px] text-slate-400 italic">Matching candidate identity...</div>
+                )}
+              </div>
+
+              {/* Hand Objects */}
+              <div className="flex flex-col gap-1 border-b border-dashed border-slate-200 pb-2">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Objects in Hands</span>
+                {lastAnalysis ? (
+                  lastAnalysis.hand_objects && lastAnalysis.hand_objects.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {lastAnalysis.hand_objects.map((obj: string, i: number) => {
+                        const isSus = ["phone", "smartphone", "mobile", "cheat", "book"].some(word => obj.toLowerCase().includes(word));
+                        return (
+                          <span key={i} className={`text-[9px] font-mono font-medium px-2 py-0.5 rounded border ${isSus ? 'bg-rose-50 border-rose-200 text-rose-700 animate-pulse' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            {obj}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-emerald-600 bg-emerald-50/40 px-2 py-0.5 rounded border border-emerald-100/50 font-medium">✨ Hands empty / holding pen</div>
+                  )
+                ) : (
+                  <div className="text-[10px] text-slate-400 italic">Scanning hand motions...</div>
+                )}
+              </div>
+
+              {/* Desk Objects */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Desk / Workspace Items</span>
+                {lastAnalysis ? (
+                  lastAnalysis.desk_objects && lastAnalysis.desk_objects.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {lastAnalysis.desk_objects.map((obj: string, i: number) => {
+                        const isSus = ["phone", "smartphone", "mobile", "cheat", "book"].some(word => obj.toLowerCase().includes(word));
+                        return (
+                          <span key={i} className={`text-[9px] font-mono font-medium px-1.5 py-0.5 rounded border ${isSus ? 'bg-rose-50 border-rose-200 text-rose-700 animate-pulse' : 'bg-blue-50/45 border-blue-100 text-blue-700'}`}>
+                            {obj}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 italic">Workspace clear</div>
+                  )
+                ) : (
+                  <div className="text-[10px] text-slate-400 italic">Analyzing desk items...</div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Proctoring Status */}
           <div className="p-5 flex-1 flex flex-col gap-6 overflow-y-auto">

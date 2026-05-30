@@ -11,6 +11,23 @@ const ai = new GoogleGenAI({
   }
 });
 
+async function getBase64FromInput(input: string): Promise<string> {
+  if (!input) return "";
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    try {
+      const res = await fetch(input);
+      if (!res.ok) throw new Error("Failed to fetch image");
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer).toString("base64");
+    } catch (err) {
+      console.error("Failed to fetch image from URL", input, err);
+      // Fallback to a transparent pixel
+      return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    }
+  }
+  return input.includes(",") ? input.split(",")[1] : input;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { image, image2 } = await req.json();
@@ -18,9 +35,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
 
-    // Extract base64 part support data url formats
-    const base64Data = image.includes(",") ? image.split(",")[1] : image;
-    const base64Data2 = image2 ? (image2.includes(",") ? image2.split(",")[1] : image2) : null;
+    // Capture base64 from data URL or remote HTTP/HTTPS URL
+    const base64Data = await getBase64FromInput(image);
+    const base64Data2 = image2 ? await getBase64FromInput(image2) : null;
 
     // Prepare contents with either one or two images
     const contents: any[] = [
@@ -41,16 +58,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Call the AI model
+    // Call the AI model for high fidelity proctor verification
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: [
         ...contents,
-        "Analyze these two webcam frames captured simultaneously during an online proctored exam. " +
-        "The first image represents the student's frontal/face camera (Primary Cam), which should focus on the student's face. " +
-        "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) to detect blind spots, unauthorized materials, screens, or secondary devices. " +
-        "Ensure there is exactly one student in the first image, and no other human presence. For the second image, verify that there are no additional screens, smartphones, books, papers, or cheat sheets. " +
-        "Output a JSON object with strictly these keys: 'faces_detected' (number, representing total face elements found), 'head_movement' (string: 'normal', 'looking_left', 'looking_right', 'looking_up', 'looking_down' based on the Primary Cam), 'eye_gaze' (string: 'center', 'left', 'right'), 'warnings' (array of strings explaining any violations found, e.g. 'No face detected in primary camera', 'Multiple faces detected', 'Unpermitted mobile phone or accessory in secondary view', 'Head turned right', 'Looking away from screen')."
+        "Analyze these webcam frames captured during an online proctored exam. " +
+        "The first image represents the student's frontal/face camera (Primary Cam). " +
+        "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) viewing the student and their desk/hands. " +
+        "Provide a comprehensive proctor analysis for: " +
+        "1. STUDENT RECOGNITION: Confirm if the student's face is clearly visible and recognizable in both cameras, and check for student identity consistency. " +
+        "2. DESK OBJECTS: Identify and list all visible objects on the desk/workspace (such as pen, paper, notebook, calculator, phone, bottle, secondary monitor). " +
+        "3. HAND OBJECTS: Identify and list any objects currently in the student's hands in real-time. " +
+        "4. ALERTS: Generate specific warning strings if unauthorized materials like smartphones, tablets, reference books, or cheat sheets are found on the desk, in hands, or within reach."
       ],
       config: {
         responseMimeType: "application/json",
@@ -60,13 +80,24 @@ export async function POST(req: NextRequest) {
             faces_detected: { type: Type.INTEGER, description: "Number of full or partial faces detected" },
             head_movement: { type: Type.STRING, description: "One of: normal, looking_left, looking_right, looking_up, looking_down" },
             eye_gaze: { type: Type.STRING, description: "One of: center, left, right" },
+            student_recognized: { type: Type.BOOLEAN, description: "True if the student is verified and recognized, false if identity mismatch or face missing" },
+            desk_objects: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "List of items and objects detected on the desk or workspace"
+            },
+            hand_objects: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "List of objects held in the student's hands"
+            },
             warnings: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
               description: "List of violation warning descriptions"
             }
           },
-          required: ["faces_detected", "head_movement", "eye_gaze", "warnings"]
+          required: ["faces_detected", "head_movement", "eye_gaze", "student_recognized", "desk_objects", "hand_objects", "warnings"]
         }
       }
     });
