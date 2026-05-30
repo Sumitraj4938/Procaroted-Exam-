@@ -176,8 +176,8 @@ export default function SessionReviewPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-transparent">
+      <header className="bg-slate-900/95 backdrop-blur-md text-white border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white hover:bg-slate-800" onClick={() => router.push("/admin")}>
             <ArrowLeft className="w-5 h-5" />

@@ -79,8 +79,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md shadow-lg border-slate-200">
+    <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
+      <Card className="w-full max-w-md shadow-2xl border-white/20 bg-white/95 backdrop-blur-md">
         <CardHeader className="text-center">
           <div className="mx-auto bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mb-4">
             <ShieldCheck className="w-8 h-8 text-blue-600" />

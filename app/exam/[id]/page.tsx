@@ -411,8 +411,8 @@ export default function ExamScreen() {
 
   if (!examStarted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4" ref={containerRef}>
-        <Card className="w-full max-w-3xl">
+      <div className="min-h-screen flex items-center justify-center bg-transparent p-4" ref={containerRef}>
+        <Card className="w-full max-w-3xl border-white/20 bg-white/95 backdrop-blur-md shadow-2xl">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center gap-2">
               <ShieldCheck className="text-blue-600" />
@@ -547,9 +547,9 @@ export default function ExamScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col" ref={containerRef}>
+    <div className="min-h-screen bg-transparent flex flex-col" ref={containerRef}>
       {/* Top Navigation Bar */}
-      <header className="bg-white border-b px-6 py-3 flex items-center justify-between shadow-sm z-10">
+      <header className="bg-white/95 backdrop-blur-md border-b px-6 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 w-8 h-8 rounded-md flex items-center justify-center text-white font-bold">
             AI

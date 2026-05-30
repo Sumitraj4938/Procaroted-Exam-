@@ -76,8 +76,8 @@ export default function StudentDashboard() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-transparent">
+      <header className="bg-white/95 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
           <div className="bg-blue-600 w-8 h-8 rounded-md flex items-center justify-center text-white font-bold">
             AI

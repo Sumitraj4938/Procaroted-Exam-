@@ -96,8 +96,8 @@ export default function AdminDashboard() {
   const terminatedCount = sessions.filter(s => s.status === 'terminated').length;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-transparent">
+      <header className="bg-slate-900/95 backdrop-blur-md text-white border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 w-8 h-8 rounded-md flex items-center justify-center font-bold">
             <ShieldAlert className="w-5 h-5" />
@@ -150,7 +150,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50">
             <h2 className="text-lg font-semibold text-slate-800">Live Monitoring</h2>
             <div className="flex gap-2 w-full sm:w-auto">
