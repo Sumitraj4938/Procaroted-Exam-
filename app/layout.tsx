@@ -1,6 +1,5 @@
 import type {Metadata} from 'next';
 import './globals.css'; // Global styles
-import SecurityShell from '@/components/SecurityShell';
 
 export const metadata: Metadata = {
   title: 'AI Proctored Exam System',
@@ -11,11 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning>
-        <SecurityShell>
-          {children}
-        </SecurityShell>
-      </body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
