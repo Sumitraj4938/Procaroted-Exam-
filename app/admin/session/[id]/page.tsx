@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore } from "@/store";
@@ -182,6 +183,7 @@ export default function SessionReviewPage() {
           <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white hover:bg-slate-800" onClick={() => router.push("/admin")}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
+          <Image src="/logo.png" alt="Logo" width={32} height={32} />
           <div>
             <h1 className="text-xl font-semibold">Session Review: {sessionInfo?.candidateName || "Bob Smith"}</h1>
             <p className="text-xs text-slate-400">{sessionInfo?.examName || "Computer Science 101"} • {sessionInfo?.status === "in_progress" ? "In Progress" : "Completed"}</p>

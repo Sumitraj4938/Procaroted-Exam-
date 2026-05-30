@@ -1,11 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, LogIn, Loader2 } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -82,8 +83,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
       <Card className="w-full max-w-md shadow-2xl border-white/20 bg-white/95 backdrop-blur-md">
         <CardHeader className="text-center">
-          <div className="mx-auto bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mb-4">
-            <ShieldCheck className="w-8 h-8 text-blue-600" />
+          <div className="mx-auto flex items-center justify-center mb-4">
+            <Image src="/logo.png" alt="Proctored Mode Online Exam Logo" width={100} height={100} className="rounded-full" />
           </div>
           <CardTitle className="text-2xl font-bold text-slate-800">AI Proctored Exam</CardTitle>
           <CardDescription className="text-slate-500">Secure, intelligent, and fair online assessments.</CardDescription>

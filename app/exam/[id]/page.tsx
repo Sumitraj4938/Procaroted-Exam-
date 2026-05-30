@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore, useExamStore } from "@/store";
@@ -551,9 +552,7 @@ export default function ExamScreen() {
       {/* Top Navigation Bar */}
       <header className="bg-white/95 backdrop-blur-md border-b px-6 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 w-8 h-8 rounded-md flex items-center justify-center text-white font-bold">
-            AI
-          </div>
+          <Image src="/logo.png" alt="Logo" width={32} height={32} />
           <div>
             <h1 className="text-lg font-semibold text-slate-800 leading-tight">Advanced Mathematics</h1>
             <p className="text-xs text-slate-500">Candidate: {user?.fullName}</p>

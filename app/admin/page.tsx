@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useAuthStore } from "@/store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -99,9 +100,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-transparent">
       <header className="bg-slate-900/95 backdrop-blur-md text-white border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 w-8 h-8 rounded-md flex items-center justify-center font-bold">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
+          <Image src="/logo.png" alt="Logo" width={32} height={32} className="rounded-sm" />
           <h1 className="text-xl font-semibold">Proctoring Control Center</h1>
         </div>
         <div className="flex items-center gap-4">
