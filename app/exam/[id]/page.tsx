@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore, useExamStore } from "@/store";
 import { supabase } from "@/lib/supabase";
+import { dbSync } from "@/lib/dbSync";
 import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,12 +74,41 @@ export default function ExamScreen() {
     }
   }, [warnings]);
 
-  const questions = [
-    { id: 1, text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"] },
-    { id: 2, text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"] },
-    { id: 3, text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"] },
-    { id: 4, text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"] },
+  const defaultQuestions = [
+    { id: 1, text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1 },
+    { id: 2, text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"], correct_option: 2 },
+    { id: 3, text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"], correct_option: 0 },
+    { id: 4, text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"], correct_option: 2 },
   ];
+
+  const [questions, setQuestions] = useState<any[]>(defaultQuestions);
+
+  // Load custom student assigned questions if available
+  useEffect(() => {
+    const loadCustomQuestions = async () => {
+      if (user && params.id) {
+        try {
+          const customQs = await dbSync.getAssignedQuestions(user.id, params.id as string);
+          if (customQs && customQs.length > 0) {
+            console.log("Loaded custom assigned questions for student:", customQs);
+            const formatted = customQs.map((q, idx) => ({
+              id: q.id || idx + 1,
+              text: q.question_text,
+              options: q.options,
+              correct_option: q.correct_option
+            }));
+            setQuestions(formatted);
+          } else {
+            setQuestions(defaultQuestions);
+          }
+        } catch (err) {
+          console.warn("Failed to load assigned questions from DB sync layer, using defaults", err);
+          setQuestions(defaultQuestions);
+        }
+      }
+    };
+    loadCustomQuestions();
+  }, [user, params.id]);
 
   // Initialize exam
   useEffect(() => {
@@ -406,6 +436,32 @@ export default function ExamScreen() {
     try {
       if (user) {
         const examId = params.id as string;
+
+        // Calculate dynamic results & score
+        let correctCount = 0;
+        const mappedAnswers = questions.map((q, idx) => {
+          const selected = selectedAnswers[idx] !== undefined ? selectedAnswers[idx] : null;
+          const isCorrect = selected !== null && selected === (q.correct_option ?? 0);
+          if (isCorrect) correctCount++;
+          return {
+            question_text: q.text,
+            options: q.options,
+            correct_option: q.correct_option ?? 0,
+            selected_option: selected,
+          };
+        });
+
+        const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 100;
+
+        // Save progress, answers, and score in db sync layer
+        await dbSync.saveAnswersAndResult(
+          examId, // using examId as key for matching path params.id inside session review page
+          user.id,
+          examId,
+          mappedAnswers,
+          score
+        );
+
         await supabase
           .from('exam_sessions')
           .update({
@@ -642,7 +698,7 @@ export default function ExamScreen() {
                 </h3>
                 
                 <div className="space-y-3">
-                  {questions[currentQuestion].options.map((option, idx) => (
+                  {questions[currentQuestion].options.map((option: string, idx: number) => (
                     <div
                       key={idx}
                       className={`p-4 rounded-lg border-2 cursor-pointer transition-all flex items-center gap-3 ${

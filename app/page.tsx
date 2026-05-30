@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { dbSync } from "@/lib/dbSync";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,19 +41,9 @@ export default function LoginPage() {
     // ---------------------------------------------------
 
     try {
-      // Query Supabase for the user with matching email and password
-      const { data: userData, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password)
-        .single();
+      const userData = await dbSync.authenticate(email, password);
 
-      if (fetchError) {
-        console.error("Supabase fetch error:", fetchError);
-      }
-
-      if (fetchError || !userData) {
+      if (!userData) {
         setError("Invalid email or password.");
         setLoading(false);
         return;

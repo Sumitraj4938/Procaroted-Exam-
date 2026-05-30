@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore } from "@/store";
 import { supabase } from "@/lib/supabase";
+import { dbSync } from "@/lib/dbSync";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, AlertTriangle, Clock, ShieldAlert, Video, Eye } from "lucide-react";
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, AlertTriangle, Clock, ShieldAlert, Video, Eye, CheckCircle2, XCircle, Award } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export default function SessionReviewPage() {
@@ -18,6 +19,7 @@ export default function SessionReviewPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
   const [violations, setViolations] = useState<any[]>([]);
+  const [examResult, setExamResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const duration = 3600; // 1 hour in seconds
 
@@ -123,6 +125,23 @@ export default function SessionReviewPage() {
             { id: "mock_4", time: 2100, type: "no_face", severity: "high", desc: "Face not visible in camera", screenshot: "" },
           ]);
         }
+        // Fetch dynamic answers result in sync layer
+        const result = await dbSync.getSubmittedResult(sessionId);
+        if (result) {
+          setExamResult(result);
+        } else {
+          // Fallback pre-filled mock answers for standard review demo
+          setExamResult({
+            score: 75,
+            answers: [
+              { question_text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1, selected_option: 1 },
+              { question_text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"], correct_option: 2, selected_option: 2 },
+              { question_text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"], correct_option: 0, selected_option: 1 },
+              { question_text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"], correct_option: 2, selected_option: 2 }
+            ]
+          });
+        }
+
       } catch (err) {
         console.error("Error loading session/violations from DB, playing in offline/fallback mock mode", err);
         // Fallback mockup
@@ -137,6 +156,15 @@ export default function SessionReviewPage() {
           examName: "Computer Science 101",
           cheatingScore: 85,
           status: "completed"
+        });
+        setExamResult({
+          score: 75,
+          answers: [
+            { question_text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1, selected_option: 1 },
+            { question_text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"], correct_option: 2, selected_option: 2 },
+            { question_text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"], correct_option: 0, selected_option: 1 },
+            { question_text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"], correct_option: 2, selected_option: 2 }
+          ]
         });
       } finally {
         setLoading(false);
@@ -373,6 +401,108 @@ export default function SessionReviewPage() {
               })()}
             </CardContent>
           </Card>
+
+          {/* Candidate Submission Results Summary */}
+          {examResult && (
+            <Card className="border-slate-200 shadow-sm overflow-hidden bg-white mt-6">
+              <CardHeader className="bg-slate-50 border-b border-slate-150 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-blue-600" />
+                    Student Submission Results Details
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">Verified candidate questionnaire responses & calculated score</p>
+                </div>
+                
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-150 px-3 py-1.5 rounded-lg shrink-0">
+                  <span className="text-xs font-bold text-blue-800">Final Assessment Score:</span>
+                  <span className={`text-sm font-extrabold ${examResult.score >= 50 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {examResult.score}%
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 space-y-5">
+                {(!examResult.answers || examResult.answers.length === 0) ? (
+                  <p className="text-xs text-slate-500 italic">No specific questionnaire answers submitted yet for this run.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100 space-y-4">
+                    {examResult.answers.map((ans: any, idx: number) => {
+                      const isCorrect = ans.selected_option !== null && ans.selected_option === ans.correct_option;
+                      return (
+                        <div key={idx} className="pt-4 first:pt-0 space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <h4 className="text-sm font-bold text-slate-900 leading-tight">
+                              Q{idx + 1}. {ans.question_text}
+                            </h4>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1 ${
+                              isCorrect 
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' 
+                                : ans.selected_option === null 
+                                  ? 'bg-slate-100 text-slate-500 border border-slate-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-150'
+                            }`}>
+                              {isCorrect ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  Correct
+                                </>
+                              ) : ans.selected_option === null ? (
+                                'Unanswered'
+                              ) : (
+                                <>
+                                  <XCircle className="w-3 h-3 text-rose-600" />
+                                  Incorrect
+                                </>
+                              )}
+                            </span>
+                          </div>
+
+                          {/* Options choices display with highlight indicators */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            {ans.options.map((opt: string, optIdx: number) => {
+                              const isSelected = ans.selected_option === optIdx;
+                              const isCorrectOption = ans.correct_option === optIdx;
+                              
+                              let optionClass = "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100/50 cursor-default transition-colors";
+                              if (isSelected && isCorrect) {
+                                optionClass = "bg-emerald-50 text-emerald-800 border-emerald-300 font-medium";
+                              } else if (isSelected && !isCorrect) {
+                                optionClass = "bg-rose-50 text-rose-800 border-rose-300 font-medium";
+                              } else if (isCorrectOption) {
+                                optionClass = "bg-emerald-50/50 text-emerald-800 border-emerald-200/50 italic font-medium";
+                              }
+
+                              return (
+                                <div 
+                                  key={optIdx} 
+                                  className={`px-3 py-2 text-xs border rounded-lg flex items-center justify-between ${optionClass}`}
+                                >
+                                  <span>
+                                    <span className="font-bold mr-1">{String.fromCharCode(65 + optIdx)}.</span>
+                                    {opt}
+                                  </span>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white border shrink-0 shadow-3xs ml-1.5">
+                                      Chosen
+                                    </span>
+                                  )}
+                                  {!isSelected && isCorrectOption && (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 text-emerald-700 bg-white border border-emerald-150 shrink-0 ml-1.5">
+                                      Correct Key
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right: Event Log */}
