@@ -27,6 +27,40 @@ export default function ExamScreen() {
   const [examStarted, setExamStarted] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showBigAlert, setShowBigAlert] = useState<any>(null);
+  const [hasSavedProgress, setHasSavedProgress] = useState(false);
+
+  // Load saved progress from localStorage if it exists on mount
+  useEffect(() => {
+    if (!user || !params.id) return;
+    const progressKey = `exam_progress_${user.id}_${params.id}`;
+    const saved = localStorage.getItem(progressKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed) {
+          setCurrentQuestion(parsed.currentQuestion ?? 0);
+          setSelectedAnswers(parsed.selectedAnswers ?? {});
+          setTimeLeft(parsed.timeLeft ?? (60 * 60));
+          setHasSavedProgress(true);
+          console.log("Automatically restored previous exam progress from reload!", parsed);
+        }
+      } catch (e) {
+        console.error("Failed to parse saved exam progress:", e);
+      }
+    }
+  }, [user, params.id]);
+
+  // Save current progress on changes
+  useEffect(() => {
+    if (!examStarted || !user || !params.id) return;
+    const progressKey = `exam_progress_${user.id}_${params.id}`;
+    localStorage.setItem(progressKey, JSON.stringify({
+      currentQuestion,
+      selectedAnswers,
+      timeLeft,
+      examStarted: true
+    }));
+  }, [currentQuestion, selectedAnswers, timeLeft, examStarted, user, params.id]);
   
   const webcamRef1 = useRef<Webcam>(null);
   const webcamRef2 = useRef<Webcam>(null);
@@ -156,19 +190,22 @@ export default function ExamScreen() {
 
   // Timer
   useEffect(() => {
-    if (!examStarted || !isExamActive || timeLeft <= 0) return;
+    if (!examStarted || !isExamActive || showBigAlert || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
-  }, [examStarted, isExamActive, timeLeft]);
+  }, [examStarted, isExamActive, showBigAlert, timeLeft]);
 
   // Auto-submit on high cheating score
   useEffect(() => {
     if (cheatingScore >= 100 && isExamActive) {
       setExamActive(false);
+      if (user && params.id) {
+        localStorage.removeItem(`exam_progress_${user.id}_${params.id}`);
+      }
       alert("Exam terminated due to excessive violations.");
       router.push("/dashboard");
     }
-  }, [cheatingScore, isExamActive, setExamActive, router]);
+  }, [cheatingScore, isExamActive, setExamActive, router, user, params.id]);
 
   // Save violation details to Supabase database with screenshots
   const saveViolation = useCallback(async (type: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical', screenshot: string) => {
@@ -259,6 +296,13 @@ export default function ExamScreen() {
       type = "head_movement";
       desc = `Suspicious head movement: looking ${head_movement.replace('looking_', '')}. Keep your gaze on the screen.`;
       severity = "medium";
+      violationFound = true;
+    }
+    // 5. Check for excessive physical or structural shifting (high)
+    else if (analysis.excessive_movement === true) {
+      type = "excessive_movement";
+      desc = "Excessive head, shoulder, or body shifting detected. Please sit still and stay focused.";
+      severity = "high";
       violationFound = true;
     }
 
@@ -433,6 +477,11 @@ export default function ExamScreen() {
       document.exitFullscreen().catch(() => {});
     }
 
+    if (user && params.id) {
+      const progressKey = `exam_progress_${user.id}_${params.id}`;
+      localStorage.removeItem(progressKey);
+    }
+
     try {
       if (user) {
         const examId = params.id as string;
@@ -495,6 +544,21 @@ export default function ExamScreen() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {hasSavedProgress && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-xs sm:text-sm text-emerald-800 flex items-start gap-3 shadow-3xs">
+                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-bounce" />
+                <div>
+                  <h4 className="font-bold text-emerald-900 mb-1">
+                    Saved Exam Progress Detected!
+                  </h4>
+                  <p className="opacity-90 leading-relaxed font-medium">
+                    We found active exam progress from your previous window or session. 
+                    Upon confirming your cameras, you will resume exactly at <strong>Question {currentQuestion + 1}</strong> with your options selection and <strong>{formatTime(timeLeft)}</strong> of remaining time fully intact.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs sm:text-sm text-blue-850">
               <h4 className="font-bold mb-2 flex items-center gap-2 text-blue-900">
                 <AlertTriangle className="w-4 h-4 text-blue-700" />
@@ -613,9 +677,14 @@ export default function ExamScreen() {
               </div>
             </div>
           </CardContent>
-          <div className="p-6 pt-0 flex justify-end">
-            <Button size="lg" onClick={startExam} disabled={!cameraActive || !selectedCameraId1 || !selectedCameraId2}>
-              Confirm Inputs & Start Exam
+          <div className="p-6 pt-0 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {hasSavedProgress && (
+              <span className="text-xs text-slate-500 italic font-medium">
+                Detected progress: {Object.keys(selectedAnswers).length} questions answered
+              </span>
+            )}
+            <Button size="lg" onClick={startExam} disabled={!cameraActive || !selectedCameraId1 || !selectedCameraId2} className={hasSavedProgress ? "bg-emerald-600 hover:bg-emerald-700" : ""}>
+              {hasSavedProgress ? "Restore Progress & Resume Exam" : "Confirm Inputs & Start Exam"}
             </Button>
           </div>
         </Card>
