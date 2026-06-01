@@ -107,14 +107,63 @@ export default function AdminDashboard() {
         .order('started_at', { ascending: false });
 
       if (error) throw error;
-      setSessions(data as any);
+      
+      const mergedSessions: any[] = [...(data || [])];
+      
+      // Safely merge completed results from local storage so they are visible in the admin overview too
+      if (typeof window !== "undefined") {
+        try {
+          const localResultsRaw = localStorage.getItem("synced_exam_results");
+          const syncedUsersRaw = localStorage.getItem("synced_users");
+          const localResults = localResultsRaw ? JSON.parse(localResultsRaw) : [];
+          const localUsers = syncedUsersRaw ? JSON.parse(syncedUsersRaw) : [];
+
+          localResults.forEach((lr: any) => {
+            const existingIdx = mergedSessions.findIndex(
+              (s: any) => s.user_id === lr.user_id && s.exam_id === lr.exam_id
+            );
+
+            const matchedUser = localUsers.find((u: any) => u.id === lr.user_id);
+            const matchedUserFullName = matchedUser?.full_name || "Student Candidate";
+            const matchedUserEmail = matchedUser?.email || "student@example.com";
+            const examTitle = defaultExams.find(e => e.id === lr.exam_id)?.title || "Advanced Exam";
+
+            const localSessionEntry = {
+              id: lr.session_id || lr.exam_id,
+              user_id: lr.user_id,
+              exam_id: lr.exam_id,
+              status: "completed",
+              cheating_score: lr.cheating_score ?? 0,
+              users: {
+                full_name: matchedUserFullName,
+                email: matchedUserEmail
+              },
+              exams: {
+                title: examTitle
+              }
+            };
+
+            if (existingIdx >= 0) {
+              mergedSessions[existingIdx] = {
+                ...mergedSessions[existingIdx],
+                status: "completed",
+                users: mergedSessions[existingIdx].users || localSessionEntry.users,
+                exams: mergedSessions[existingIdx].exams || localSessionEntry.exams
+              };
+            } else {
+              mergedSessions.push(localSessionEntry);
+            }
+          });
+        } catch (e) {
+          console.warn("Could not merge offline local exam results in admin dashboard:", e);
+        }
+      }
+
+      setSessions(mergedSessions as any);
     } catch (error) {
       console.error("Error fetching sessions:", error);
-      // Ensure fallbacks match and work robustly
+      // Ensure fallbacks match, with Alice, Bob Smith, and Charlie Brown removed
       setSessions([
-        { id: "s1", user_id: "u1", exam_id: "exam-1", status: "in_progress", cheating_score: 15, users: { full_name: "Alice Johnson", email: "alice@example.com" }, exams: { title: "Advanced Mathematics" } },
-        { id: "s2", user_id: "u2", exam_id: "exam-2", status: "completed", cheating_score: 85, users: { full_name: "Bob Smith", email: "bob@example.com" }, exams: { title: "Computer Science 101" } },
-        { id: "s3", user_id: "u3", exam_id: "exam-3", status: "in_progress", cheating_score: 45, users: { full_name: "Charlie Brown", email: "charlie@example.com" }, exams: { title: "Physics Final" } },
         { id: "s4", user_id: "u4", exam_id: "exam-1", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
       ] as any);
     } finally {

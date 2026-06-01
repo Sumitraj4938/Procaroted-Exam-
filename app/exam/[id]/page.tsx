@@ -270,25 +270,25 @@ export default function ExamScreen() {
     let desc = "";
     let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
 
-    // 1. Check for student identity mismatch (critical)
-    if (!student_recognized) {
-      type = "identity_mismatch";
-      desc = "Candidate identity mismatch: face in feed does not match the registered user.";
-      severity = "critical";
+    // 1. Check for no face detected / face is too dark/not visible in frame (high) - Prioritized first for precise detection
+    if (faces_detected === 0) {
+      type = "no_face";
+      desc = "No face detected or face is in dark. Please reposition yourself clearly or turn on a light to be recognized.";
+      severity = "high";
       violationFound = true;
     }
-    // 2. Check for multiple faces (critical)
+    // 2. Check for multiple faces (critical) - Prioritized second
     else if (faces_detected > 1) {
       type = "multiple_faces";
       desc = "Multiple faces detected. Only the authorized student is permitted in frame.";
       severity = "critical";
       violationFound = true;
     }
-    // 3. Check for no face detected (high)
-    else if (faces_detected === 0) {
-      type = "no_face";
-      desc = "No face detected. Please reposition yourself clearly in front of the camera.";
-      severity = "high";
+    // 3. Check for student identity mismatch (critical)
+    else if (!student_recognized) {
+      type = "identity_mismatch";
+      desc = "Candidate identity mismatch: face in feed does not match the registered user.";
+      severity = "critical";
       violationFound = true;
     }
     // 4. Check for suspicious head movement/looking away (medium)
@@ -308,6 +308,7 @@ export default function ExamScreen() {
 
     if (violationFound) {
       addWarning(desc, severity);
+      setShowBigAlert({ message: desc, severity });
       await saveViolation(type, desc, severity, screenshot);
     } else {
       setShowBigAlert(null);
@@ -317,8 +318,10 @@ export default function ExamScreen() {
     if (analysis.warnings && Array.isArray(analysis.warnings)) {
       for (const warn of analysis.warnings) {
         if (!warn) continue;
-        // Check if we already issued a similar warning text very recently to prevent spamming
         addWarning(warn, "high");
+        if (!violationFound) {
+          setShowBigAlert({ message: warn, severity: 'high' });
+        }
         await saveViolation("unpermitted_materials", warn, "high", screenshot);
       }
     }
@@ -1090,20 +1093,19 @@ export default function ExamScreen() {
                   The exam is temporarily paused and locked. Correct your environment (e.g. adjust camera, ensure you are alone, focus on screen), and this alert will automatically disappear to let you continue.
                 </p>
               </div>
-              {/* Hide manual override button on mobile to fulfill "exam will not move forward until he fix it" */}
-              <div className="w-full block md:hidden">
-                <div className="text-sm font-semibold text-red-500 animate-pulse flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                  Monitoring environment for auto-resolution...
+              {/* Real-time monitoring status indicators instead of manual bypass, forcing actual resolution */}
+              <div className="w-full flex flex-col items-center justify-center gap-2 mt-2">
+                <div className="text-sm font-semibold text-red-600 animate-pulse flex items-center justify-center gap-2 bg-red-50 px-5 py-2.5 rounded-full border border-red-100">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                  Monitoring camera feeds for auto-resolution...
                 </div>
+                <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed max-w-sm">
+                  Please reposition yourself, ensure proper lighting, remove any extra persons, and keep your eyes on the screen to auto-dismiss this lock.
+                </p>
               </div>
-              <Button 
-                size="lg" 
-                className="hidden md:flex w-full md:w-auto bg-red-600 hover:bg-red-700 text-white font-bold h-12 md:h-14 px-8 bg-gradient-to-r hover:opacity-90 rounded-full"
-                onClick={() => setShowBigAlert(null)}
-              >
-                I Have Fixed This
-              </Button>
             </div>
           </motion.div>
         )}

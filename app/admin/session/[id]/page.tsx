@@ -126,7 +126,17 @@ export default function SessionReviewPage() {
           ]);
         }
         // Fetch dynamic answers result in sync layer
-        const result = await dbSync.getSubmittedResult(sessionId);
+        let result = await dbSync.getSubmittedResult(sessionId);
+        if (!result && sessionData) {
+          // Fall back to lookup by user_id and exam_id in local storage
+          const allLocalResults = (typeof window !== "undefined" && localStorage.getItem("synced_exam_results")) 
+            ? JSON.parse(localStorage.getItem("synced_exam_results") || "[]") 
+            : [];
+          const found = allLocalResults.find((r: any) => r.user_id === sessionData.user_id && r.exam_id === sessionData.exam_id);
+          if (found) {
+            result = found;
+          }
+        }
         if (result) {
           setExamResult(result);
         } else {
@@ -152,7 +162,7 @@ export default function SessionReviewPage() {
           { id: "mock_4", time: 2100, type: "no_face", severity: "high", desc: "Face not visible in camera", screenshot: "" },
         ]);
         setSessionInfo({
-          candidateName: "Bob Smith",
+          candidateName: "Diana Prince",
           examName: "Computer Science 101",
           cheatingScore: 85,
           status: "completed"
@@ -213,7 +223,7 @@ export default function SessionReviewPage() {
           </Button>
           <Image src="/logo.png" alt="Logo" width={32} height={32} />
           <div>
-            <h1 className="text-xl font-semibold">Session Review: {sessionInfo?.candidateName || "Bob Smith"}</h1>
+            <h1 className="text-xl font-semibold">Session Review: {sessionInfo?.candidateName || "Diana Prince"}</h1>
             <p className="text-xs text-slate-400">{sessionInfo?.examName || "Computer Science 101"} • {sessionInfo?.status === "in_progress" ? "In Progress" : "Completed"}</p>
           </div>
         </div>
