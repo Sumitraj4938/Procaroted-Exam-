@@ -77,7 +77,7 @@ export default function LoginPage() {
           <div className="mx-auto flex items-center justify-center mb-4">
             <Image src="/logo.png" alt="Proctored Mode Online Exam Logo" width={100} height={100} className="rounded-full" />
           </div>
-          <CardTitle className="text-2xl font-bold text-slate-800">AI Proctored Exam secure</CardTitle>
+          <CardTitle className="text-2xl font-bold text-slate-800">AI Proctored Exam</CardTitle>
           <CardDescription className="text-slate-500">Secure, intelligent, and fair online assessments.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
