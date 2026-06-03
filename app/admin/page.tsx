@@ -382,6 +382,203 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router]);
 
+  // Session simulator handler to allow quick creation of testing results
+  const handleSimulateSession = async (studentId: string, examId: string = "exam-1") => {
+    try {
+      setLoading(true);
+      const safeUserId = toSafeUUID(studentId);
+      const safeExamId = toSafeUUID(examId);
+      const sessionId = toSafeUUID(`${studentId}_${examId}`);
+
+      // Choose a story archetype for simulated telemetry
+      const randVal = Math.random();
+      let cheatingScore = 15;
+      let score = 85;
+      let status = "completed";
+      let violationsList: any[] = [];
+
+      if (randVal < 0.35) {
+        // High performing student with negligible warning
+        cheatingScore = 5;
+        score = 96;
+        violationsList = [
+          { type: "head_movement", desc: "Brief gaze deviation from screen monitor", severity: "low", time: 420 }
+        ];
+      } else if (randVal < 0.70) {
+        // Some suspicious behavior (tab switches + look aways)
+        cheatingScore = 45;
+        score = 72;
+        violationsList = [
+          { type: "tab_switch", desc: "Forced system focus diversion (unauthorized tab switch)", severity: "medium", time: 720 },
+          { type: "head_movement", desc: "Sustained ocular deviation (looking off-screen)", severity: "medium", time: 1300 },
+          { type: "no_face", desc: "No face detected in active webcam frame", severity: "low", time: 1840 }
+        ];
+      } else {
+        // Terminated cheating student
+        cheatingScore = 95;
+        score = 15;
+        status = "terminated";
+        violationsList = [
+          { type: "tab_switch", desc: "Multiple window shifts / focus alterations logged", severity: "medium", time: 180 },
+          { type: "multiple_faces", desc: "Secondary face detected within proctored zone", severity: "critical", time: 820 },
+          { type: "no_face", desc: "Active candidate missing from video capture viewport", severity: "high", time: 1450 },
+          { type: "identity_mismatch", desc: "Facial structural features recognition mismatch", severity: "critical", time: 2200 }
+        ];
+      }
+
+      const mockAnswers = [
+        { question_text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1, selected_option: score > 60 ? 1 : 2 },
+        { question_text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"], correct_option: 2, selected_option: 2 },
+        { question_text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"], correct_option: 0, selected_option: score > 75 ? 0 : 3 },
+        { question_text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"], correct_option: 2, selected_option: score > 30 ? 2 : 0 }
+      ];
+
+      // Remove existing records if conflict arises in remote DB
+      try {
+        await supabase.from("violations").delete().eq("session_id", sessionId);
+        await supabase.from("exam_sessions").delete().eq("id", sessionId);
+      } catch (err) {
+        console.warn("Clean-up prior to simulation skipped", err);
+      }
+
+      // Insert mock session record
+      const { error: sessionError } = await supabase
+        .from('exam_sessions')
+        .insert({
+          id: sessionId,
+          user_id: safeUserId,
+          exam_id: safeExamId,
+          status: status,
+          cheating_score: cheatingScore,
+          score: score,
+          started_at: new Date(Date.now() - 3600000).toISOString(),
+          completed_at: new Date().toISOString(),
+          answers_json: mockAnswers
+        });
+
+      if (sessionError) {
+        console.warn("Could not write remote mock session, syncing locally.", sessionError.message);
+      }
+
+      // Insert corresponding telemetry logs inside violations
+      for (const v of violationsList) {
+        try {
+          await supabase
+            .from("violations")
+            .insert({
+              session_id: sessionId,
+              violation_type: v.type,
+              description: v.desc,
+              severity: v.severity,
+              video_timestamp_seconds: v.time,
+              screenshot: "https://picsum.photos/seed/" + v.type + "/640/480"
+            });
+        } catch (verr) {
+          console.warn("Violation insert failed remotely:", verr);
+        }
+      }
+
+      // Synchronize in browser client storage as reliable backup
+      if (typeof window !== "undefined") {
+        try {
+          const resultsRaw = localStorage.getItem("synced_exam_results");
+          const localResults = resultsRaw ? JSON.parse(resultsRaw) : [];
+          const filtered = localResults.filter((r: any) => r.session_id !== sessionId);
+          filtered.push({
+            session_id: sessionId,
+            user_id: safeUserId,
+            exam_id: safeExamId,
+            submitted_at: new Date().toISOString(),
+            answers: mockAnswers,
+            score: score,
+            cheating_score: cheatingScore,
+            total_questions: mockAnswers.length
+          });
+          localStorage.setItem("synced_exam_results", JSON.stringify(filtered));
+        } catch (e) {
+          console.warn("Failed to synchronize simulated session in local client storage", e);
+        }
+      }
+
+      fetchSessions();
+    } catch (e: any) {
+      console.error("Simulation failed", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete/Reset specific exam session logs
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm("Are you sure you want to completely clear and reset this student's exam session?")) return;
+    try {
+      setLoading(true);
+      await supabase.from("violations").delete().eq("session_id", sessionId);
+      await supabase.from("exam_sessions").delete().eq("id", sessionId);
+
+      if (typeof window !== "undefined") {
+        try {
+          const resultsRaw = localStorage.getItem("synced_exam_results");
+          if (resultsRaw) {
+            const results = JSON.parse(resultsRaw);
+            const filtered = results.filter((r: any) => r.session_id !== sessionId);
+            localStorage.setItem("synced_exam_results", JSON.stringify(filtered));
+          }
+        } catch (e) {
+          console.warn("Failed to delete local state backups", e);
+        }
+      }
+
+      fetchSessions();
+    } catch (e: any) {
+      console.error("Failed to delete user session", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete registered student account
+  const handleDeleteUser = async (userId: string, email: string) => {
+    if (email === "sumitraj4938@gmail.com") {
+      alert("System developer access administrator privileges cannot be deleted.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to permanently clear student registration "${email}"? This will delete all their saved assessments.`)) return;
+
+    try {
+      setLoading(true);
+      
+      // Select corresponding user sessions and purge
+      const userSessions = sessions.filter(s => toSafeUUID(s.user_id) === toSafeUUID(userId));
+      for (const s of userSessions) {
+        await supabase.from("violations").delete().eq("session_id", s.id);
+        await supabase.from("exam_sessions").delete().eq("id", s.id);
+      }
+
+      await supabase.from("users").delete().eq("id", userId);
+
+      if (typeof window !== "undefined") {
+        try {
+          const syncedUsersRaw = localStorage.getItem("synced_users");
+          if (syncedUsersRaw) {
+            const localUsers = JSON.parse(syncedUsersRaw);
+            const filtered = localUsers.filter((u: any) => toSafeUUID(u.id) !== toSafeUUID(userId));
+            localStorage.setItem("synced_users", JSON.stringify(filtered));
+          }
+        } catch (e) {
+          console.warn("Local storage clean error for user registration", e);
+        }
+      }
+
+      loadUsersList();
+      fetchSessions();
+    } catch (e: any) {
+      console.error("Failed to delete registered student", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!user) return null;
 
   // Handles adding new user
@@ -694,27 +891,51 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          {session.status === 'not_started' ? (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              disabled
-                              className="bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed shadow-none text-xs font-bold px-3 py-1.5 rounded-lg"
-                            >
-                              <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                              Awaiting Start
-                            </Button>
-                          ) : (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="bg-white border-slate-200 text-blue-600 hover:text-white hover:bg-blue-600 shadow-sm text-xs font-bold px-3 py-1.5 rounded-lg"
-                              onClick={() => router.push(`/admin/session/${session.id}`)}
-                            >
-                              <Eye className="w-3.5 h-3.5 mr-1.5" />
-                              Analyze Feeds
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-2.5">
+                            {session.status === 'not_started' ? (
+                              <>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => handleSimulateSession(session.user_id, session.exam_id)}
+                                  className="border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-600 hover:text-white hover:border-amber-600 text-[11px] font-black px-2.5 py-1 h-8 rounded-lg shadow-3xs flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500 hover:text-white group-hover:text-white" />
+                                  Simulate Exam
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  disabled
+                                  className="bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed shadow-none text-[11px] font-bold px-2.5 py-1 h-8 rounded-lg flex items-center gap-1"
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                  Awaiting Start
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => handleDeleteSession(session.id)}
+                                  className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 h-8 w-8 rounded-lg transition-all flex items-center justify-center cursor-pointer"
+                                  title="Delete & Reset Session"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="bg-white border-slate-200 text-blue-600 hover:text-white hover:bg-blue-600 shadow-3xs text-[11px] font-black px-2.5 py-1 h-8 rounded-lg flex items-center gap-1 cursor-pointer"
+                                  onClick={() => router.push(`/admin/session/${session.id}`)}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Analyze Feeds
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -851,7 +1072,7 @@ export default function AdminDashboard() {
                         <th className="px-5 py-3">Account Name</th>
                         <th className="px-5 py-3">E-Mail Address</th>
                         <th className="px-5 py-3">Authorization Role</th>
-                        <th className="px-5 py-3">Assigned Status</th>
+                        <th className="px-5 py-3 text-right">Session Logs & Administrative Controls</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -860,25 +1081,79 @@ export default function AdminDashboard() {
                           u.full_name?.toLowerCase().includes(userSearchText.toLowerCase()) || 
                           u.email?.toLowerCase().includes(userSearchText.toLowerCase())
                         )
-                        .map((u, i) => (
-                          <tr key={u.id || i} className="hover:bg-slate-50/40">
-                            <td className="px-5 py-3.5 font-bold text-slate-900 flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-700 flex items-center justify-center">
-                                {u.full_name?.charAt(0).toUpperCase()}
-                              </div>
-                              {u.full_name}
-                            </td>
-                            <td className="px-5 py-3.5 font-mono text-slate-500">{u.email}</td>
-                            <td className="px-5 py-3.5">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                u.role === "admin" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-blue-100 text-blue-800 border-blue-200"
-                              } border`}>
-                                {u.role.toUpperCase()}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3.5 text-slate-400 text-[10px] italic">Verified Ready</td>
-                          </tr>
-                        ))}
+                        .map((u, i) => {
+                          const userSession = sessions.find(s => toSafeUUID(s.user_id) === toSafeUUID(u.id));
+                          return (
+                            <tr key={u.id || i} className="hover:bg-slate-50/40 transition-colors">
+                              <td className="px-5 py-3 font-bold text-slate-900 flex items-center gap-1.5">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-700 flex items-center justify-center">
+                                  {u.full_name?.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="truncate max-w-[150px]">{u.full_name}</span>
+                              </td>
+                              <td className="px-5 py-3 font-mono text-slate-500">{u.email}</td>
+                              <td className="px-5 py-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  u.role === "admin" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-blue-100 text-blue-800 border-blue-200"
+                                } border`}>
+                                  {u.role.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-right">
+                                <div className="flex items-center justify-end gap-2 text-right">
+                                  {u.role === "student" && (
+                                    <>
+                                      {userSession && userSession.status !== "not_started" ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold leading-none ${
+                                            userSession.status === "in_progress" ? "bg-amber-50 text-amber-700 border-amber-100 animate-pulse" :
+                                            userSession.status === "completed" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                            "bg-rose-50 text-rose-700 border-rose-100"
+                                          } border`}>
+                                            {userSession.status.toUpperCase()} ({userSession.cheating_score}% Risk)
+                                          </span>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="px-2 h-7 text-[10px] font-bold text-blue-600 hover:text-white hover:bg-blue-600 border-slate-200 rounded-md cursor-pointer"
+                                            onClick={() => router.push(`/admin/session/${userSession.id}`)}
+                                          >
+                                            View Report
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10px] text-slate-400 font-medium">Awaiting Test</span>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSimulateSession(u.id)}
+                                            className="px-2 h-7 text-[10px] font-black border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-600 hover:text-white rounded-md flex items-center gap-0.5 cursor-pointer"
+                                          >
+                                            <Sparkles className="w-2.5 h-2.5 text-amber-500 fill-amber-500 hover:text-white" />
+                                            Simulate Exam
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  
+                                  {u.email !== "sumitraj4938@gmail.com" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteUser(u.id, u.email)}
+                                      className="text-slate-400 hover:text-red-650 hover:bg-red-50 p-1 h-7 w-7 rounded-md cursor-pointer"
+                                      title="Purge Account registration"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 )}
