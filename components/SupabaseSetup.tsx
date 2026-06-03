@@ -70,8 +70,14 @@ CREATE TABLE exam_sessions (
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     cheating_score INTEGER DEFAULT 0,
+    score INTEGER DEFAULT 0,
+    answers_json JSONB,
     UNIQUE(user_id, exam_id)
 );
+
+-- NOTE: If you already ran the SQL script before, just paste and run these two lines to update your database:
+-- ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;
+-- ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS answers_json JSONB;
 
 -- Answers Table
 CREATE TABLE answers (

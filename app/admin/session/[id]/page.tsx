@@ -65,7 +65,9 @@ export default function SessionReviewPage() {
             started_at,
             completed_at,
             user_id,
-            exam_id
+            exam_id,
+            score,
+            answers_json
           `)
           .eq('id', sessionId)
           .maybeSingle();
@@ -125,18 +127,37 @@ export default function SessionReviewPage() {
             { id: "mock_4", time: 2100, type: "no_face", severity: "high", desc: "Face not visible in camera", screenshot: "" },
           ]);
         }
-        // Fetch dynamic answers result in sync layer
-        let result = await dbSync.getSubmittedResult(sessionId);
-        if (!result && sessionData) {
-          // Fall back to lookup by user_id and exam_id in local storage
-          const allLocalResults = (typeof window !== "undefined" && localStorage.getItem("synced_exam_results")) 
-            ? JSON.parse(localStorage.getItem("synced_exam_results") || "[]") 
-            : [];
-          const found = allLocalResults.find((r: any) => toSafeUUID(r.user_id) === toSafeUUID(sessionData.user_id) && toSafeUUID(r.exam_id) === toSafeUUID(sessionData.exam_id));
-          if (found) {
-            result = found;
+
+        // Fetch dynamic answers result
+        let result = null;
+        if (sessionData && sessionData.answers_json) {
+          result = {
+            session_id: sessionId,
+            user_id: sessionData.user_id,
+            exam_id: sessionData.exam_id,
+            submitted_at: sessionData.completed_at || new Date().toISOString(),
+            score: sessionData.score ?? 0,
+            answers: Array.isArray(sessionData.answers_json)
+              ? sessionData.answers_json
+              : typeof sessionData.answers_json === 'string'
+                ? JSON.parse(sessionData.answers_json)
+                : [],
+            total_questions: Array.isArray(sessionData.answers_json) ? sessionData.answers_json.length : 0
+          };
+        } else {
+          result = await dbSync.getSubmittedResult(sessionId);
+          if (!result && sessionData) {
+            // Fall back to lookup by user_id and exam_id in local storage
+            const allLocalResults = (typeof window !== "undefined" && localStorage.getItem("synced_exam_results")) 
+              ? JSON.parse(localStorage.getItem("synced_exam_results") || "[]") 
+              : [];
+            const found = allLocalResults.find((r: any) => toSafeUUID(r.user_id) === toSafeUUID(sessionData.user_id) && toSafeUUID(r.exam_id) === toSafeUUID(sessionData.exam_id));
+            if (found) {
+              result = found;
+            }
           }
         }
+
         if (result) {
           setExamResult(result);
         } else {

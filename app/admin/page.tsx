@@ -36,6 +36,7 @@ interface StudentSession {
   exam_id: string;
   status: string;
   cheating_score: number;
+  score?: number;
   users: {
     full_name: string;
     email: string;
@@ -102,6 +103,8 @@ export default function AdminDashboard() {
           exam_id,
           status,
           cheating_score,
+          score,
+          answers_json,
           users ( full_name, email ),
           exams ( title )
         `)
@@ -135,6 +138,8 @@ export default function AdminDashboard() {
               exam_id: toSafeUUID(lr.exam_id),
               status: "completed",
               cheating_score: lr.cheating_score ?? 0,
+              score: lr.score ?? 0,
+              answers_json: lr.answers || [],
               users: {
                 full_name: matchedUserFullName,
                 email: matchedUserEmail
@@ -148,6 +153,8 @@ export default function AdminDashboard() {
               mergedSessions[existingIdx] = {
                 ...mergedSessions[existingIdx],
                 status: "completed",
+                score: mergedSessions[existingIdx].score ?? lr.score ?? 0,
+                answers_json: mergedSessions[existingIdx].answers_json || lr.answers || [],
                 users: mergedSessions[existingIdx].users || localSessionEntry.users,
                 exams: mergedSessions[existingIdx].exams || localSessionEntry.exams
               };
@@ -485,13 +492,20 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4 text-slate-600 font-medium">{session.exams?.title || 'Advanced Mathematics'}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                            session.status === 'in_progress' ? 'bg-blue-50 text-blue-700 border-blue-100 animate-pulse' :
-                            session.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                            'bg-red-50 text-red-700 border-red-100'
-                          }`}>
-                            {session.status.replace('_', ' ').toUpperCase()}
-                          </span>
+                          <div className="flex flex-col gap-1.5 items-start">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                              session.status === 'in_progress' ? 'bg-blue-50 text-blue-700 border-blue-100 animate-pulse' :
+                              session.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                              'bg-red-50 text-red-700 border-red-100'
+                            }`}>
+                              {session.status.replace('_', ' ').toUpperCase()}
+                            </span>
+                            {session.status === 'completed' && (
+                              <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded shadow-xs">
+                                Score: <b className="text-blue-600 font-extrabold">{(session as any).score ?? 0}%</b>
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">

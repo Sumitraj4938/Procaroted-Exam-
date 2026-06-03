@@ -51,6 +51,8 @@ CREATE TABLE exam_sessions (
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     cheating_score INTEGER DEFAULT 0,
+    score INTEGER DEFAULT 0,
+    answers_json JSONB,
     UNIQUE(user_id, exam_id)
 );
 

@@ -751,7 +751,9 @@ export default function ExamScreen() {
           .from('exam_sessions')
           .update({
             status: 'completed',
-            completed_at: new Date().toISOString()
+            completed_at: new Date().toISOString(),
+            score: score,
+            answers_json: mappedAnswers
           })
           .eq('id', sessionId);
       }

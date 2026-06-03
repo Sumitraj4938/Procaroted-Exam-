@@ -166,16 +166,23 @@ export const dbSync = {
     );
 
     try {
-      // Try to fetch custom questions from Supabase questions table if it has student_id column
+      // Try to fetch custom questions from Supabase questions table
       const { data, error } = await supabase
         .from("questions")
         .select("*")
         .eq("exam_id", examId);
 
-      if (!error && data) {
-        const dbStudentQuestions = (data as any[]).filter(
+      if (!error && data && data.length > 0) {
+        // First look for student-specific questions from database
+        let dbStudentQuestions = (data as any[]).filter(
           (q) => q.student_id === studentId || q.user_id === studentId
         );
+        
+        // If there are none assigned specifically to this student, use standard questions for this exam
+        if (dbStudentQuestions.length === 0) {
+          dbStudentQuestions = (data as any[]).filter((q) => !q.student_id && !q.user_id);
+        }
+
         if (dbStudentQuestions.length > 0) {
           // Format as standard custom question format
           const formatted = dbStudentQuestions.map((q) => ({
@@ -271,15 +278,34 @@ export const dbSync = {
 
     // Try to update session meta or answers table on Supabase in a backward-compatible format
     try {
-      await supabase
-        .from("exam_sessions")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          // Store results payload securely mapped inside cheating_score or status/metadata if allowed
-          // We also preserve standard database schemas
-        })
-        .eq("id", sessionId);
+      const updatePayload: any = {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      };
+
+      try {
+        const { error } = await supabase
+          .from("exam_sessions")
+          .update({
+            ...updatePayload,
+            score: score,
+            answers_json: answers,
+          })
+          .eq("id", sessionId);
+
+        if (error) {
+          console.warn("Could not insert score/answers_json directly to exam_sessions (old schema). Retrying with standard columns.", error);
+          await supabase
+            .from("exam_sessions")
+            .update(updatePayload)
+            .eq("id", sessionId);
+        }
+      } catch (innerErr) {
+        await supabase
+          .from("exam_sessions")
+          .update(updatePayload)
+          .eq("id", sessionId);
+      }
 
       // Try inserting into answers table
       for (let i = 0; i < answers.length; i++) {
@@ -299,9 +325,83 @@ export const dbSync = {
     }
   },
 
-  getSubmittedResult(sessionId: string): DBResult | null {
-    const results = getLocalItem("synced_exam_results") as DBResult[];
-    return results.find((r) => r.session_id === sessionId) || null;
+  async getSubmittedResult(sessionId: string): Promise<DBResult | null> {
+    // 1. First, check if we have a local result
+    const localResults = getLocalItem("synced_exam_results") as DBResult[];
+    const localFound = localResults.find((r) => r.session_id === sessionId);
+    if (localFound) return localFound;
+
+    // 2. Try fetching from Supabase exam_sessions
+    try {
+      const { data: sessionData, error: sessionErr } = await supabase
+        .from("exam_sessions")
+        .select("id, user_id, exam_id, score, answers_json, completed_at")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      if (!sessionErr && sessionData) {
+        if (sessionData.score !== null && sessionData.score !== undefined && sessionData.answers_json) {
+          const parsedAnswers = Array.isArray(sessionData.answers_json)
+            ? sessionData.answers_json
+            : typeof sessionData.answers_json === "string"
+              ? JSON.parse(sessionData.answers_json)
+              : sessionData.answers_json;
+
+          return {
+            session_id: sessionData.id,
+            user_id: sessionData.user_id,
+            exam_id: sessionData.exam_id,
+            submitted_at: sessionData.completed_at || new Date().toISOString(),
+            answers: parsedAnswers,
+            score: sessionData.score ?? 0,
+            total_questions: Array.isArray(parsedAnswers) ? parsedAnswers.length : 0,
+          };
+        }
+
+        // 3. Fallback: query standard answers + questions from database
+        const { data: userAnswers, error: answersError } = await supabase
+          .from("answers")
+          .select("question_id, selected_option")
+          .eq("session_id", sessionId);
+
+        const { data: examQuestions, error: questionsError } = await supabase
+          .from("questions")
+          .select("id, question_text, options, correct_option")
+          .eq("exam_id", sessionData.exam_id);
+
+        if (!answersError && !questionsError && examQuestions && examQuestions.length > 0) {
+          let correctCount = 0;
+          const mappedAnswers = examQuestions.map((q) => {
+            const userAns = userAnswers?.find((a) => a.question_id === q.id);
+            const selected = userAns ? userAns.selected_option : null;
+            const isCorrect = selected !== null && selected === q.correct_option;
+            if (isCorrect) correctCount++;
+
+            return {
+              question_text: q.question_text,
+              options: Array.isArray(q.options) ? q.options : JSON.parse(q.options as any),
+              correct_option: q.correct_option,
+              selected_option: selected,
+            };
+          });
+
+          const score = Math.round((correctCount / examQuestions.length) * 100);
+          return {
+            session_id: sessionId,
+            user_id: sessionData.user_id,
+            exam_id: sessionData.exam_id,
+            submitted_at: sessionData.completed_at || new Date().toISOString(),
+            answers: mappedAnswers,
+            score,
+            total_questions: examQuestions.length,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Error loading result from database:", e);
+    }
+
+    return null;
   },
 
   getStudentResults(userId: string): DBResult[] {
