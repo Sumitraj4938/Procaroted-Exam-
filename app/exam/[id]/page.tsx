@@ -89,6 +89,14 @@ export default function ExamScreen() {
   const [showBigAlert, setShowBigAlert] = useState<any>(null);
   const [hasSavedProgress, setHasSavedProgress] = useState(false);
 
+  // Pre-exam hardware and environment diagnostics states
+  const [micDiagnosticStatus, setMicDiagnosticStatus] = useState<"checking" | "allowed" | "denied" | "silent">("checking");
+  const [micVolumeLevel, setMicVolumeLevel] = useState<number>(0);
+  const [ambientLightLevel, setAmbientLightLevel] = useState<number | null>(null);
+  const [ambientLightStatus, setAmbientLightStatus] = useState<"checking" | "dark" | "optimal" | "bright">("checking");
+  const [lightFeedback, setLightFeedback] = useState<string>("Analyzing room lighting via Face Camera...");
+  const [micFeedback, setMicFeedback] = useState<string>("Awaiting microphone permission...");
+
   // Load saved progress from localStorage if it exists on mount
   useEffect(() => {
     if (!user || !params.id) return;
@@ -212,6 +220,165 @@ export default function ExamScreen() {
       setShowBigAlert(warnings[0]);
     }
   }, [warnings]);
+
+  // Microphone diagnostics loop
+  useEffect(() => {
+    if (examStarted) return;
+    
+    let audioStream: MediaStream | null = null;
+    let audioCtx: AudioContext | null = null;
+    let animationFrameId: number;
+    let silentTicks = 0;
+    let userSpokeOnce = false;
+
+    async function initMicrophone() {
+      try {
+        setMicDiagnosticStatus("checking");
+        setMicFeedback("Requesting microphone configuration permission...");
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStream = stream;
+        setMicDiagnosticStatus("allowed");
+        setMicFeedback("Microphone configured! Speak into your mic to test intensity levels.");
+
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) {
+          setMicFeedback("Microphone active. Real-time amplitude monitoring not supported on this browser.");
+          return;
+        }
+
+        const ctx = new AudioContextClass();
+        audioCtx = ctx;
+        const analyser = ctx.createAnalyser();
+        const source = ctx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const trackLevels = () => {
+          if (ctx.state === "suspended") {
+            ctx.resume();
+          }
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / bufferLength;
+          // scale slightly for visual feedback range
+          const rawPercent = (average / 140) * 100;
+          const level = Math.min(Math.round(rawPercent), 100);
+          setMicVolumeLevel(level);
+
+          if (level > 3) {
+            userSpokeOnce = true;
+            silentTicks = 0;
+            setMicDiagnosticStatus("allowed");
+            setMicFeedback("Excellent! Microphone successfully connected and registering active audio amplitude.");
+          } else {
+            if (!userSpokeOnce) {
+              silentTicks++;
+              if (silentTicks > 150) { // approx 2.5 seconds at ~60fps
+                setMicDiagnosticStatus("silent");
+                setMicFeedback("Microphone is connected but registering near total silence. Ensure your input is not muted and speak.");
+              }
+            } else {
+              setMicDiagnosticStatus("allowed");
+              setMicFeedback("Excellent! Microphone successfully connected and registering active audio amplitude.");
+            }
+          }
+
+          animationFrameId = requestAnimationFrame(trackLevels);
+        };
+
+        trackLevels();
+      } catch (err) {
+        console.warn("Microphone access denied or error:", err);
+        setMicDiagnosticStatus("denied");
+        setMicFeedback("Unable to access microphone. Please ensure a headset or mic is connected and browser audio permissions are permitted.");
+      }
+    }
+
+    initMicrophone();
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
+    };
+  }, [examStarted]);
+
+  // Ambient light diagnostics periodic analysis using webcamRef1
+  useEffect(() => {
+    if (examStarted) return;
+
+    const runBrightnessCheck = () => {
+      if (!webcamRef1.current) return;
+      try {
+        const screenshot = webcamRef1.current.getScreenshot();
+        if (!screenshot) return;
+        
+        const img = new window.Image();
+        img.src = screenshot;
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 32;
+            canvas.height = 24;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            
+            ctx.drawImage(img, 0, 0, 32, 24);
+            const imgData = ctx.getImageData(0, 0, 32, 24);
+            const data = imgData.data;
+            
+            let totalLuminance = 0;
+            const count = data.length / 4;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              const lum = (0.299 * r) + (0.587 * g) + (0.114 * b);
+              totalLuminance += lum;
+            }
+            
+            const level = Math.round((totalLuminance / count) / 255 * 100);
+            setAmbientLightLevel(level);
+
+            if (level < 20) {
+              setAmbientLightStatus("dark");
+              setLightFeedback("Room is too dark. Increase light source brightness so AI can recognize facial landmarks securely.");
+            } else if (level > 85) {
+              setAmbientLightStatus("bright");
+              setLightFeedback("Image overexposed. Please face away from direct harsh backlights to eliminate whiteouts.");
+            } else {
+              setAmbientLightStatus("optimal");
+              setLightFeedback("Optimal ambient visibility & lighting contrast detected for secure facial pattern matching.");
+            }
+          } catch (e) {
+            console.warn("Luminance pixel parse aborted", e);
+          }
+        };
+      } catch (err) {
+        console.warn("Could not capture preview frame for lighting evaluation", err);
+      }
+    };
+
+    const delayId = setTimeout(runBrightnessCheck, 2000);
+    const intervalId = setInterval(runBrightnessCheck, 3000);
+
+    return () => {
+      clearTimeout(delayId);
+      clearInterval(intervalId);
+    };
+  }, [examStarted, selectedCameraId1]);
 
   const defaultQuestions = [
     { id: 1, text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1 },
@@ -843,6 +1010,143 @@ export default function ExamScreen() {
                       ))}
                       <option value="simulated">🔄 Virtual Simulated Desk Camera (Continuous Room Feed)</option>
                     </select>
+                  </div>
+                </div>
+              )}
+              
+              {/* Hardware & Environment Diagnostics Check */}
+              <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-4">
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2 mb-1 uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                  Live Hardware & Environment Diagnostics
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Microphone Connectivity Card */}
+                  <div className="bg-white border border-slate-100 rounded-lg p-3 flex flex-col justify-between shadow-3xs hover:border-slate-200 transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">🎙️ Audio Device Status</span>
+                        {micDiagnosticStatus === "allowed" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-100">
+                            Active
+                          </span>
+                        )}
+                        {micDiagnosticStatus === "silent" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-amber-700 bg-amber-55/20 border border-amber-200 animate-pulse">
+                            Silent
+                          </span>
+                        )}
+                        {micDiagnosticStatus === "checking" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-blue-700 bg-blue-50 border border-blue-100 animate-pulse">
+                            Testing
+                          </span>
+                        )}
+                        {micDiagnosticStatus === "denied" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-red-700 bg-red-50 border border-red-100">
+                            Blocked
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-700 leading-relaxed min-h-[32px]">
+                        {micFeedback}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-50">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold mb-1 uppercase tracking-wider">
+                        <span>Mic Input Level</span>
+                        <span className="font-mono font-bold text-slate-600">{micVolumeLevel}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-75 ${
+                            micVolumeLevel > 30 ? 'bg-emerald-500' : micVolumeLevel > 5 ? 'bg-indigo-500' : 'bg-slate-300'
+                          }`}
+                          style={{ width: `${Math.max(micVolumeLevel, 2)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ambient Light Environment Card */}
+                  <div className="bg-white border border-slate-100 rounded-lg p-3 flex flex-col justify-between shadow-3xs hover:border-slate-200 transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">💡 Ambient Light Level</span>
+                        {ambientLightStatus === "optimal" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-100">
+                            Optimal
+                          </span>
+                        )}
+                        {ambientLightStatus === "dark" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-amber-700 bg-amber-55/20 border border-amber-200 animate-pulse">
+                            Too Dark
+                          </span>
+                        )}
+                        {ambientLightStatus === "bright" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-rose-700 bg-rose-50 border border-rose-100 animate-pulse">
+                            Too Bright
+                          </span>
+                        )}
+                        {ambientLightStatus === "checking" && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-blue-700 bg-blue-50 border border-blue-100 animate-pulse">
+                            Measuring
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-700 leading-relaxed min-h-[32px]">
+                        {lightFeedback}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-50">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold mb-1 uppercase tracking-wider">
+                        <span>Luminance level</span>
+                        <span className="font-mono font-bold text-slate-600">
+                          {ambientLightLevel !== null ? `${ambientLightLevel}%` : "Calculating..."}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            ambientLightStatus === 'optimal' ? 'bg-emerald-500' :
+                            ambientLightStatus === 'dark' ? 'bg-amber-500' :
+                            ambientLightStatus === 'bright' ? 'bg-rose-500' : 'bg-slate-300'
+                          }`}
+                          style={{ width: `${ambientLightLevel !== null ? ambientLightLevel : 1}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actionable Diagnostics Notifications Box */}
+              {(micDiagnosticStatus !== "allowed" || ambientLightStatus !== "optimal") && (
+                <div className="bg-amber-50/75 border border-amber-200/50 rounded-xl p-4 text-[11px] text-amber-900 shadow-3xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                    <div className="space-y-1">
+                      <h5 className="font-bold text-amber-950">Pre-Exam Visibility & Audio Warnings</h5>
+                      <p className="opacity-90 leading-relaxed font-semibold">
+                        We detected potential ambient light or hardware irregularities. To ensure seamless, error-free automated AI proctoring, please resolve these points before joining the session:
+                      </p>
+                      <ul className="list-disc pl-4 space-y-1.5 font-semibold text-amber-850 mt-2">
+                        {micDiagnosticStatus === "silent" && (
+                          <li><strong>Silent Mic Signal:</strong> Go to sound settings to verify your input devices aren&apos;t muted, or speak closer to the microphone.</li>
+                        )}
+                        {micDiagnosticStatus === "denied" && (
+                          <li><strong>Blocked Mic Access:</strong> Click the lock/settings icon in your browser URL bar and allow microphone permissions.</li>
+                        )}
+                        {ambientLightStatus === "dark" && (
+                          <li><strong>Insufficient Visibility (Too Dark):</strong> Turn on a desk lamp, ceiling light, or face a source of soft light. Avoid dark shadows.</li>
+                        )}
+                        {ambientLightStatus === "bright" && (
+                          <li><strong>Overexposure (Too Bright):</strong> Avoid direct sunlight or flashlights pointing straight at the lens to eliminate visual glare.</li>
+                        )}
+                      </ul>
+                    </div>
                   </div>
                 </div>
               )}
