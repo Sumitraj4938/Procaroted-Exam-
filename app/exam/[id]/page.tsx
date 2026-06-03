@@ -247,6 +247,7 @@ export default function ExamScreen() {
       }
     };
     loadCustomQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, params.id]);
 
   // Initialize exam

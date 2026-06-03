@@ -371,9 +371,16 @@ export default function AdminDashboard() {
       })
       .subscribe();
 
+    // Quick polling fallback for sandboxed environments where websockets are unstable
+    const pollInterval = setInterval(() => {
+      fetchSessions();
+    }, 2500);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router]);
 
   if (!user) return null;

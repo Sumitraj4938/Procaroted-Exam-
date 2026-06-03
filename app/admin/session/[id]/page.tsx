@@ -208,6 +208,7 @@ export default function SessionReviewPage() {
     };
 
     fetchSessionAndViolations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
   // Handle timeline ticking

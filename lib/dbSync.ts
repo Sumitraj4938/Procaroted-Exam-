@@ -92,6 +92,22 @@ export const dbSync = {
 
   async getUsers(): Promise<DBUser[]> {
     const localUsers = getLocalItem("synced_users") as DBUser[];
+    
+    // Helper to ensure Sumit Raj is in a list
+    const ensureSumit = (list: any[]) => {
+      const hasSumit = list.some((u) => u.email.toLowerCase() === "sumitraj4938@gmail.com");
+      if (!hasSumit) {
+        list.push({
+          id: "student-mock-id",
+          email: "sumitraj4938@gmail.com",
+          role: "student",
+          full_name: "Sumit Raj",
+          created_at: new Date().toISOString()
+        });
+      }
+      return list;
+    };
+
     try {
       // Query Supabase users
       const { data, error } = await supabase
@@ -100,7 +116,7 @@ export const dbSync = {
         
       if (error) {
         console.warn("Could not load users from Supabase, relying on local sync", error);
-        return localUsers;
+        return ensureSumit([...localUsers]) as DBUser[];
       }
 
       // Merge Supabase users with local custom users (deduplicate by email)
@@ -110,10 +126,10 @@ export const dbSync = {
           merged.push(lu);
         }
       });
-      return merged as DBUser[];
+      return ensureSumit(merged) as DBUser[];
     } catch (err) {
       console.error("Failed to fetch users", err);
-      return localUsers;
+      return ensureSumit([...localUsers]) as DBUser[];
     }
   },
 
