@@ -24,7 +24,8 @@ import {
   Sparkles, 
   Lock, 
   Mail, 
-  UserCheck 
+  UserCheck,
+  Clock
 } from "lucide-react";
 import { supabase, toSafeUUID } from "@/lib/supabase";
 import { dbSync, DBUser, DBCustomQuestion } from "@/lib/dbSync";
@@ -167,6 +168,39 @@ export default function AdminDashboard() {
         }
       }
 
+      // Synthesize "not_started" fallback sessions for registered students with no existing session
+      try {
+        const allUsers = await dbSync.getUsers();
+        const allStudents = allUsers.filter((u: any) => u.role === "student" || u.role !== "admin");
+        
+        allStudents.forEach((student: any) => {
+          const hasSession = mergedSessions.some(
+            (s: any) => toSafeUUID(s.user_id) === toSafeUUID(student.id)
+          );
+          
+          if (!hasSession) {
+            mergedSessions.push({
+              id: toSafeUUID(`${student.id}_exam-1`),
+              user_id: toSafeUUID(student.id),
+              exam_id: "exam-1",
+              status: "not_started",
+              cheating_score: 0,
+              score: 0,
+              answers_json: [],
+              users: {
+                full_name: student.full_name || "Student Candidate",
+                email: student.email || "student@example.com"
+              },
+              exams: {
+                title: "Advanced Mathematics"
+              }
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("Could not merge unstarted students into mergedSessions list in primary flow:", err);
+      }
+
       setSessions(mergedSessions as any);
     } catch (error) {
       console.warn("Relational join query failed inside fetchSessions. Running client-side merge fallback:", error);
@@ -262,6 +296,39 @@ export default function AdminDashboard() {
           }
         }
 
+        // Synthesize "not_started" fallback sessions for registered students with no existing session inside fallback stream
+        try {
+          const allUsers = await dbSync.getUsers();
+          const allStudents = allUsers.filter((u: any) => u.role === "student" || u.role !== "admin");
+          
+          allStudents.forEach((student: any) => {
+            const hasSession = mergedSessions.some(
+              (s: any) => toSafeUUID(s.user_id) === toSafeUUID(student.id)
+            );
+            
+            if (!hasSession) {
+              mergedSessions.push({
+                id: toSafeUUID(`${student.id}_exam-1`),
+                user_id: toSafeUUID(student.id),
+                exam_id: "exam-1",
+                status: "not_started",
+                cheating_score: 0,
+                score: 0,
+                answers_json: [],
+                users: {
+                  full_name: student.full_name || "Student Candidate",
+                  email: student.email || "student@example.com"
+                },
+                exams: {
+                  title: "Advanced Mathematics"
+                }
+              });
+            }
+          });
+        } catch (err) {
+          console.warn("Could not merge unstarted students into mergedSessions list in fallback flow:", err);
+        }
+
         setSessions(mergedSessions);
       } catch (fallbackError) {
         console.error("Independent fetch fallback also failed:", fallbackError);
@@ -337,8 +404,9 @@ export default function AdminDashboard() {
       setRegisterPassword("");
       setRegisterRole("student");
       
-      // Refresh user selection pool
+      // Refresh user selection pool and live monitor session list immediately
       loadUsersList();
+      fetchSessions();
     } catch (err: any) {
       setUserErrorMessage(err?.message || "An error occurred during registration.");
     }
@@ -590,6 +658,7 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1.5 items-start">
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                              session.status === 'not_started' ? 'bg-slate-100 text-slate-600 border-slate-200' :
                               session.status === 'in_progress' ? 'bg-blue-50 text-blue-700 border-blue-100 animate-pulse' :
                               session.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                               'bg-red-50 text-red-700 border-red-100'
@@ -622,15 +691,27 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="bg-white border-slate-200 text-blue-600 hover:text-white hover:bg-blue-600 shadow-sm text-xs font-bold px-3 py-1.5 rounded-lg"
-                            onClick={() => router.push(`/admin/session/${session.id}`)}
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-1.5" />
-                            Analyze Feeds
-                          </Button>
+                          {session.status === 'not_started' ? (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              disabled
+                              className="bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed shadow-none text-xs font-bold px-3 py-1.5 rounded-lg"
+                            >
+                              <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+                              Awaiting Start
+                            </Button>
+                          ) : (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="bg-white border-slate-200 text-blue-600 hover:text-white hover:bg-blue-600 shadow-sm text-xs font-bold px-3 py-1.5 rounded-lg"
+                              onClick={() => router.push(`/admin/session/${session.id}`)}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1.5" />
+                              Analyze Feeds
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
