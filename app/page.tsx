@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, toSafeUUID } from "@/lib/supabase";
 import { dbSync } from "@/lib/dbSync";
 
 export default function LoginPage() {
@@ -29,12 +29,38 @@ export default function LoginPage() {
 
     // --- GUARANTEED ACCESS FOR REQUESTED CREDENTIALS ---
     if (email === "sumitraj4938@gmail.com" && password === "Sumit@4938") {
-      setUser({ id: "student-mock-id", email, role: "student", fullName: "Sumit Raj" });
+      const targetId = toSafeUUID("student-mock-id");
+      try {
+        await supabase.from("users").upsert({
+          id: targetId,
+          email,
+          password,
+          role: "student",
+          full_name: "Sumit Raj"
+        }, { onConflict: "email" });
+      } catch (err) {
+        console.warn("Could not upsert Sumit Raj student profile to Supabase:", err);
+      }
+
+      setUser({ id: targetId, email, role: "student", fullName: "Sumit Raj" });
       router.push("/dashboard");
       return;
     }
     if (email === "sumitraj4939@gmail.com" && password === "Sumit@4939") {
-      setUser({ id: "admin-mock-id", email, role: "admin", fullName: "Sumit Raj (Admin)" });
+      const targetId = toSafeUUID("admin-mock-id");
+      try {
+        await supabase.from("users").upsert({
+          id: targetId,
+          email,
+          password,
+          role: "admin",
+          full_name: "Sumit Raj (Admin)"
+        }, { onConflict: "email" });
+      } catch (err) {
+        console.warn("Could not upsert Sumit Raj admin profile to Supabase:", err);
+      }
+
+      setUser({ id: targetId, email, role: "admin", fullName: "Sumit Raj (Admin)" });
       router.push("/admin");
       return;
     }

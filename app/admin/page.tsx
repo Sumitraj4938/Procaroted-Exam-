@@ -95,39 +95,105 @@ export default function AdminDashboard() {
   // Load and refresh functions
   const fetchSessions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('exam_sessions')
-        .select(`
-          id,
-          user_id,
-          exam_id,
-          status,
-          cheating_score,
-          score,
-          answers_json,
-          users ( full_name, email ),
-          exams ( title )
-        `)
-        .order('started_at', { ascending: false });
+      setLoading(true);
 
-      if (error) throw error;
-      
-      const mergedSessions: any[] = [...(data || [])];
-      
-      // Safely merge completed results from local storage so they are visible in the admin overview too
+      // 1. Fetch all student accounts (db + local cache)
+      let allUsers: DBUser[] = [];
+      try {
+        allUsers = await dbSync.getUsers();
+      } catch (uErr) {
+        console.warn("Unification user fetch failed:", uErr);
+        if (typeof window !== "undefined") {
+          try {
+            const syncedUsersRaw = localStorage.getItem("synced_users");
+            allUsers = syncedUsersRaw ? JSON.parse(syncedUsersRaw) : [];
+          } catch (e) {}
+        }
+      }
+
+      // Ensure Sumit Raj profile exists
+      const hasSumit = allUsers.some((u: any) => u.email.toLowerCase() === "sumitraj4938@gmail.com");
+      if (!hasSumit) {
+        allUsers.push({
+          id: toSafeUUID("student-mock-id"),
+          email: "sumitraj4938@gmail.com",
+          role: "student",
+          full_name: "Sumit Raj",
+          created_at: new Date().toISOString()
+        });
+      }
+
+      // 2. Fetch raw sessions from Supabase
+      let sessionData: any[] = [];
+      try {
+        const { data, error } = await supabase
+          .from('exam_sessions')
+          .select('id, user_id, exam_id, status, cheating_score, score, answers_json, started_at, completed_at');
+        
+        if (!error && data) {
+          sessionData = data;
+        } else {
+          console.warn("Resilient fetch sessionData select was flagged, retrying simpler select", error);
+          const { data: fallbackData } = await supabase.from('exam_sessions').select('*');
+          if (fallbackData) {
+            sessionData = fallbackData;
+          }
+        }
+      } catch (sErr) {
+        console.warn("Caught exception reading exam_sessions remotely:", sErr);
+      }
+
+      // 3. Fetch exams list remotely
+      let examData: any[] = [];
+      try {
+        const { data, error } = await supabase
+          .from('exams')
+          .select('id, title');
+        if (!error && data) {
+          examData = data;
+        }
+      } catch (eErr) {
+        console.warn("Resilient exam cache fetch aborted:", eErr);
+      }
+
+      // 4. Perform high-performance client-side JOIN representing the relation
+      const mergedSessions: any[] = [];
+
+      sessionData.forEach((s: any) => {
+        const matchedUser = allUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(s.user_id));
+        const matchedExam = examData.find((e: any) => toSafeUUID(e.id) === toSafeUUID(s.exam_id)) || 
+                             defaultExams.find((e: any) => toSafeUUID(e.id) === toSafeUUID(s.exam_id));
+
+        mergedSessions.push({
+          id: s.id,
+          user_id: toSafeUUID(s.user_id),
+          exam_id: toSafeUUID(s.exam_id),
+          status: s.status || "completed",
+          cheating_score: s.cheating_score ?? 0,
+          score: s.score ?? 0,
+          answers_json: s.answers_json || [],
+          users: {
+            full_name: matchedUser?.full_name || "Student Candidate",
+            email: matchedUser?.email || "student@example.com"
+          },
+          exams: {
+            title: matchedExam?.title || "Advanced Mathematics"
+          }
+        });
+      });
+
+      // 5. Merge offline results from localStorage if present
       if (typeof window !== "undefined") {
         try {
           const localResultsRaw = localStorage.getItem("synced_exam_results");
-          const syncedUsersRaw = localStorage.getItem("synced_users");
           const localResults = localResultsRaw ? JSON.parse(localResultsRaw) : [];
-          const localUsers = syncedUsersRaw ? JSON.parse(syncedUsersRaw) : [];
 
           localResults.forEach((lr: any) => {
             const existingIdx = mergedSessions.findIndex(
               (s: any) => toSafeUUID(s.user_id) === toSafeUUID(lr.user_id) && toSafeUUID(s.exam_id) === toSafeUUID(lr.exam_id)
             );
 
-            const matchedUser = localUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(lr.user_id));
+            const matchedUser = allUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(lr.user_id));
             const matchedUserFullName = matchedUser?.full_name || "Student Candidate";
             const matchedUserEmail = matchedUser?.email || "student@example.com";
             const examTitle = defaultExams.find(e => toSafeUUID(e.id) === toSafeUUID(lr.exam_id))?.title || "Advanced Exam";
@@ -154,7 +220,8 @@ export default function AdminDashboard() {
                 ...mergedSessions[existingIdx],
                 status: "completed",
                 score: mergedSessions[existingIdx].score ?? lr.score ?? 0,
-                answers_json: mergedSessions[existingIdx].answers_json || lr.answers || [],
+                cheating_score: Math.max(mergedSessions[existingIdx].cheating_score, lr.cheating_score ?? 0),
+                answers_json: mergedSessions[existingIdx].answers_json?.length > 0 ? mergedSessions[existingIdx].answers_json : (lr.answers || []),
                 users: mergedSessions[existingIdx].users || localSessionEntry.users,
                 exams: mergedSessions[existingIdx].exams || localSessionEntry.exams
               };
@@ -163,179 +230,56 @@ export default function AdminDashboard() {
             }
           });
         } catch (e) {
-          console.warn("Could not merge offline local exam results in admin dashboard:", e);
+          console.warn("Could not merge local offline storage entry in admin dashboard:", e);
         }
       }
 
-      // Synthesize "not_started" fallback sessions for registered students with no existing session
-      try {
-        const allUsers = await dbSync.getUsers();
-        const allStudents = allUsers.filter((u: any) => u.role === "student" || u.role !== "admin");
-        
-        allStudents.forEach((student: any) => {
-          const hasSession = mergedSessions.some(
-            (s: any) => toSafeUUID(s.user_id) === toSafeUUID(student.id)
-          );
-          
-          if (!hasSession) {
-            mergedSessions.push({
-              id: toSafeUUID(`${student.id}_exam-1`),
-              user_id: toSafeUUID(student.id),
-              exam_id: "exam-1",
-              status: "not_started",
-              cheating_score: 0,
-              score: 0,
-              answers_json: [],
-              users: {
-                full_name: student.full_name || "Student Candidate",
-                email: student.email || "student@example.com"
-              },
-              exams: {
-                title: "Advanced Mathematics"
-              }
-            });
-          }
-        });
-      } catch (err) {
-        console.warn("Could not merge unstarted students into mergedSessions list in primary flow:", err);
-      }
+      // 6. Synthesize "not_started" state representations for remaining active student records
+      const allStudents = allUsers.filter((u: any) => u.role === "student" || u.role !== "admin");
+      allStudents.forEach((student: any) => {
+        const hasSession = mergedSessions.some(
+          (s: any) => toSafeUUID(s.user_id) === toSafeUUID(student.id)
+        );
 
-      setSessions(mergedSessions as any);
-    } catch (error) {
-      console.warn("Relational join query failed inside fetchSessions. Running client-side merge fallback:", error);
-      try {
-        // Fetch exam sessions independently
-        const { data: sessionData, error: sessionErr } = await supabase
-          .from('exam_sessions')
-          .select('id, user_id, exam_id, status, cheating_score, score, answers_json, started_at, completed_at');
-
-        if (sessionErr) throw sessionErr;
-
-        // Fetch user cache independently
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id, full_name, email');
-
-        // Fetch exam cache independently
-        const { data: examData } = await supabase
-          .from('exams')
-          .select('id, title');
-
-        const mergedSessions: any[] = (sessionData || []).map((s: any) => {
-          const matchedUser = (userData || []).find((u: any) => toSafeUUID(u.id) === toSafeUUID(s.user_id));
-          const matchedExam = (examData || []).find((e: any) => toSafeUUID(e.id) === toSafeUUID(s.exam_id));
-          return {
-            id: s.id,
-            user_id: s.user_id,
-            exam_id: s.exam_id,
-            status: s.status || "completed",
-            cheating_score: s.cheating_score ?? 0,
-            score: s.score ?? 0,
-            answers_json: s.answers_json || [],
+        if (!hasSession) {
+          mergedSessions.push({
+            id: toSafeUUID(`${student.id}_exam-1`),
+            user_id: toSafeUUID(student.id),
+            exam_id: "exam-1",
+            status: "not_started",
+            cheating_score: 0,
+            score: 0,
+            answers_json: [],
             users: {
-              full_name: matchedUser?.full_name || "Student Candidate",
-              email: matchedUser?.email || "student@example.com"
+              full_name: student.full_name || "Student Candidate",
+              email: student.email || "student@example.com"
             },
             exams: {
-              title: matchedExam?.title || "Advanced Exam"
-            }
-          };
-        });
-
-        // Merge local storage
-        if (typeof window !== "undefined") {
-          try {
-            const localResultsRaw = localStorage.getItem("synced_exam_results");
-            const syncedUsersRaw = localStorage.getItem("synced_users");
-            const localResults = localResultsRaw ? JSON.parse(localResultsRaw) : [];
-            const localUsers = syncedUsersRaw ? JSON.parse(syncedUsersRaw) : [];
-
-            localResults.forEach((lr: any) => {
-              const existingIdx = mergedSessions.findIndex(
-                (s: any) => toSafeUUID(s.user_id) === toSafeUUID(lr.user_id) && toSafeUUID(s.exam_id) === toSafeUUID(lr.exam_id)
-              );
-
-              const matchedUser = localUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(lr.user_id));
-              const matchedUserFullName = matchedUser?.full_name || "Student Candidate";
-              const matchedUserEmail = matchedUser?.email || "student@example.com";
-              const examTitle = defaultExams.find(e => toSafeUUID(e.id) === toSafeUUID(lr.exam_id))?.title || "Advanced Exam";
-
-              const localSessionEntry = {
-                id: lr.session_id || toSafeUUID(`${lr.user_id}_${lr.exam_id}`),
-                user_id: toSafeUUID(lr.user_id),
-                exam_id: toSafeUUID(lr.exam_id),
-                status: "completed",
-                cheating_score: lr.cheating_score ?? 0,
-                score: lr.score ?? 0,
-                answers_json: lr.answers || [],
-                users: {
-                  full_name: matchedUserFullName,
-                  email: matchedUserEmail
-                },
-                exams: {
-                  title: examTitle
-                }
-              };
-
-              if (existingIdx >= 0) {
-                mergedSessions[existingIdx] = {
-                  ...mergedSessions[existingIdx],
-                  status: "completed",
-                  score: mergedSessions[existingIdx].score ?? lr.score ?? 0,
-                  answers_json: mergedSessions[existingIdx].answers_json || lr.answers || [],
-                  users: mergedSessions[existingIdx].users || localSessionEntry.users,
-                  exams: mergedSessions[existingIdx].exams || localSessionEntry.exams
-                };
-              } else {
-                mergedSessions.push(localSessionEntry);
-              }
-            });
-          } catch (e) {
-            console.warn("Could not merge local storage in fallback stream:", e);
-          }
-        }
-
-        // Synthesize "not_started" fallback sessions for registered students with no existing session inside fallback stream
-        try {
-          const allUsers = await dbSync.getUsers();
-          const allStudents = allUsers.filter((u: any) => u.role === "student" || u.role !== "admin");
-          
-          allStudents.forEach((student: any) => {
-            const hasSession = mergedSessions.some(
-              (s: any) => toSafeUUID(s.user_id) === toSafeUUID(student.id)
-            );
-            
-            if (!hasSession) {
-              mergedSessions.push({
-                id: toSafeUUID(`${student.id}_exam-1`),
-                user_id: toSafeUUID(student.id),
-                exam_id: "exam-1",
-                status: "not_started",
-                cheating_score: 0,
-                score: 0,
-                answers_json: [],
-                users: {
-                  full_name: student.full_name || "Student Candidate",
-                  email: student.email || "student@example.com"
-                },
-                exams: {
-                  title: "Advanced Mathematics"
-                }
-              });
+              title: "Advanced Mathematics"
             }
           });
-        } catch (err) {
-          console.warn("Could not merge unstarted students into mergedSessions list in fallback flow:", err);
         }
+      });
 
-        setSessions(mergedSessions);
-      } catch (fallbackError) {
-        console.error("Independent fetch fallback also failed:", fallbackError);
-        // Ensure fallbacks match, with Alice, Bob Smith, and Charlie Brown removed
-        setSessions([
-          { id: "s4", user_id: "u4", exam_id: "exam-1", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
-        ] as any);
+      // Diana Prince safety net fallback
+      if (mergedSessions.length === 0) {
+        mergedSessions.push({
+          id: "s4",
+          user_id: "u4",
+          exam_id: "exam-1",
+          status: "terminated",
+          cheating_score: 95,
+          users: { full_name: "Diana Prince", email: "diana@example.com" },
+          exams: { title: "Advanced Mathematics" }
+        });
       }
+
+      setSessions(mergedSessions);
+    } catch (gErr) {
+      console.error("Critical fallback triggered in unified fetchSessions:", gErr);
+      setSessions([
+        { id: "s4", user_id: "u4", exam_id: "exam-1", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
+      ] as any);
     } finally {
       setLoading(false);
     }

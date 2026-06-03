@@ -98,7 +98,7 @@ export const dbSync = {
       const hasSumit = list.some((u) => u.email.toLowerCase() === "sumitraj4938@gmail.com");
       if (!hasSumit) {
         list.push({
-          id: "student-mock-id",
+          id: toSafeUUID("student-mock-id"),
           email: "sumitraj4938@gmail.com",
           role: "student",
           full_name: "Sumit Raj",

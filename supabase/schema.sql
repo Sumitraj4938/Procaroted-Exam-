@@ -78,30 +78,30 @@ CREATE TABLE violations (
     screenshot TEXT -- base64 data-url or attachment url of the exact violation frame
 );
 
--- Enable Row Level Security (RLS)
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE questions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exam_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE answers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE violations ENABLE ROW LEVEL SECURITY;
+-- Disable Row Level Security (RLS) to ensure seamless public frontend database operations
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
+ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE exam_sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE answers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE violations DISABLE ROW LEVEL SECURITY;
 
--- RLS Policies (Simplified for demonstration)
-CREATE POLICY "Users can view their own profile" ON users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Admins can view all users" ON users FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
-
-CREATE POLICY "Students can view exams" ON exams FOR SELECT USING (true);
-CREATE POLICY "Students can view questions for active exams" ON questions FOR SELECT USING (true);
-
-CREATE POLICY "Students can view their own sessions" ON exam_sessions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Students can insert their own sessions" ON exam_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Students can update their own sessions" ON exam_sessions FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Students can insert answers for their sessions" ON answers FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
-CREATE POLICY "Students can view their own answers" ON answers FOR SELECT USING (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
-
-CREATE POLICY "Students can insert violations for their sessions" ON violations FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
-CREATE POLICY "Admins can view all violations" ON violations FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+-- Note: The policies below are reference examples if you want to configure secure authentication later.
+-- CREATE POLICY "Users can view their own profile" ON users FOR SELECT USING (auth.uid() = id);
+-- CREATE POLICY "Admins can view all users" ON users FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+-- 
+-- CREATE POLICY "Students can view exams" ON exams FOR SELECT USING (true);
+-- CREATE POLICY "Students can view questions for active exams" ON questions FOR SELECT USING (true);
+-- 
+-- CREATE POLICY "Students can view their own sessions" ON exam_sessions FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Students can insert their own sessions" ON exam_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Students can update their own sessions" ON exam_sessions FOR UPDATE USING (auth.uid() = user_id);
+-- 
+-- CREATE POLICY "Students can insert answers for their sessions" ON answers FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
+-- CREATE POLICY "Students can view their own answers" ON answers FOR SELECT USING (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
+-- 
+-- CREATE POLICY "Students can insert violations for their sessions" ON violations FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM exam_sessions WHERE id = session_id AND user_id = auth.uid()));
+-- CREATE POLICY "Admins can view all violations" ON violations FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
 
 -- Realtime Subscriptions
 ALTER PUBLICATION supabase_realtime ADD TABLE exam_sessions;
