@@ -13,6 +13,59 @@ import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, CheckCircle2, Clock, ShieldAlert, ShieldCheck, Video, VideoOff, Sparkles, Laptop, Fingerprint, UserCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// Helper to analyze base64 images client-side to detect if webcam is covered (pitch black/dark) or solid color
+const checkIsImageBlockedOrBlack = (base64Str: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (!base64Str || typeof window === "undefined" || typeof document === "undefined") {
+      return resolve(true);
+    }
+    const img = document.createElement("img");
+    img.src = base64Str;
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 16;
+        canvas.height = 12;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(false);
+        ctx.drawImage(img, 0, 0, 16, 12);
+        const imgData = ctx.getImageData(0, 0, 16, 12);
+        const data = imgData.data;
+        let totalLuminance = 0;
+        let isSolidColor = true;
+        const firstR = data[0];
+        const firstG = data[1];
+        const firstB = data[2];
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          // Rec. 601 perceived luminance
+          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          totalLuminance += luminance;
+
+          // Check if color is virtually flat / uniform
+          if (Math.abs(r - firstR) > 12 || Math.abs(g - firstG) > 12 || Math.abs(b - firstB) > 12) {
+            isSolidColor = false;
+          }
+        }
+        const averageLuminance = totalLuminance / (data.length / 4);
+        
+        // If average brightness is extremely low (black/dark) or it is a solid color (webcam covered/blocked)
+        if (averageLuminance < 18 || isSolidColor) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      } catch (e) {
+        resolve(false);
+      }
+    };
+    img.onerror = () => resolve(true);
+  });
+};
+
 export default function ExamScreen() {
   const router = useRouter();
   const params = useParams();
@@ -65,6 +118,7 @@ export default function ExamScreen() {
   const webcamRef1 = useRef<Webcam>(null);
   const webcamRef2 = useRef<Webcam>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const consecutiveScreenshotFailures = useRef<number>(0);
 
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId1, setSelectedCameraId1] = useState<string>("");
@@ -356,9 +410,28 @@ export default function ExamScreen() {
 
         const screenshot1 = webcamRef1.current.getScreenshot();
         if (!screenshot1) {
+          consecutiveScreenshotFailures.current += 1;
+          // If we have failed to get screenshot for 2 or more consecutive times, trigger an inactive feed warning (no-face)
+          if (consecutiveScreenshotFailures.current >= 2) {
+            const blockAnalysis = {
+              faces_detected: 0,
+              head_movement: "normal",
+              eye_gaze: "center",
+              student_recognized: false,
+              excessive_movement: false,
+              desk_objects: [],
+              hand_objects: [],
+              warnings: ["Candidate's camera feed is inactive, disabled, or failed to take screens! Please check and unlock your browser camera permissions."]
+            };
+            const mockScreenshot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+            await processProctoringAnalysis(blockAnalysis, JSON.stringify({ primary: mockScreenshot, secondary: null }));
+          }
           isProcessing = false;
           return;
         }
+
+        // Reset failure count on successful screenshot capture
+        consecutiveScreenshotFailures.current = 0;
 
         let screenshot2 = null;
         if (selectedCameraId2 === "simulated") {
@@ -372,6 +445,24 @@ export default function ExamScreen() {
           primary: screenshot1,
           secondary: screenshot2
         });
+
+        // Run client-side dark/covered camera blackout check to instantly raise alarm & save bandwidth
+        const isCamera1Blocked = await checkIsImageBlockedOrBlack(screenshot1);
+        if (isCamera1Blocked) {
+          const blockAnalysis = {
+            faces_detected: 0,
+            head_movement: "normal",
+            eye_gaze: "center",
+            student_recognized: false,
+            excessive_movement: false,
+            desk_objects: [],
+            hand_objects: [],
+            warnings: ["Primary face camera (Camera 1) is covered, physically blocked, or pitch-black! Please ensure adequate lighting and completely unblock the lens."]
+          };
+          await processProctoringAnalysis(blockAnalysis, compositeScreenshot);
+          isProcessing = false;
+          return;
+        }
 
         // Call the server-side API proxy for multimodal dual-camera analysis
         const response = await fetch("/api/proctor/detect", {

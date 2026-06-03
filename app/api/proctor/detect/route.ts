@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) viewing the student and their desk/hands. " +
         "Provide a comprehensive proctor analysis and adhere strictly to these critical requirements:\n\n" +
         "1. STUDENT RECOGNITION: Confirm if the student's face is clearly visible, well-lit, and recognizable, and check for student identity consistency.\n" +
-        "   - FACE IN DARK / NOT CLEARLY SEEN: If the student's face is in deep shadow, too dark to be distinguished, blurry, covered, or not visible in Camera 1, you MUST set faces_detected to 0 and student_recognized to false.\n" +
+        "   - FACE IN DARK / NOT CLEARLY SEEN: If the student's face is in deep shadow, too dark to be distinguished, blurry, covered, or not visible in Camera 1, or if Camera 1 is completely black, blank, or covered, you MUST set faces_detected to 0 and student_recognized to false.\n" +
         "   - MULTIPLE FACES DETECTED: If there is more than one face visible in the frame (e.g., background people or someone sitting next to the student), you MUST count all of them. Set faces_detected to 2 or more, and set student_recognized to false.\n" +
         "2. DESK OBJECTS: Identify and list all visible objects on the desk/workspace (such as pen, paper, notebook, calculator, phone, bottle, secondary monitor).\n" +
         "3. HAND OBJECTS: Identify and list any objects currently in the student's hands in real-time.\n" +
