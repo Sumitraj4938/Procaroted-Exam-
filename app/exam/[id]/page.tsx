@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, CheckCircle2, Clock, ShieldAlert, ShieldCheck, Video, VideoOff, Sparkles, Laptop, Fingerprint, UserCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Helper to analyze base64 images client-side to detect if webcam is covered (pitch black/dark) or solid color
+// Helper to analyze base64 images client-side to detect if webcam is covered (pitch black/dark) or solid / flat color (e.g. tape, hand, blank screen)
 const checkIsImageBlockedOrBlack = (base64Str: string): Promise<boolean> => {
   return new Promise((resolve) => {
     if (!base64Str || typeof window === "undefined" || typeof document === "undefined") {
@@ -31,29 +31,36 @@ const checkIsImageBlockedOrBlack = (base64Str: string): Promise<boolean> => {
         ctx.drawImage(img, 0, 0, 16, 12);
         const imgData = ctx.getImageData(0, 0, 16, 12);
         const data = imgData.data;
-        let totalLuminance = 0;
-        let isSolidColor = true;
-        const firstR = data[0];
-        const firstG = data[1];
-        const firstB = data[2];
 
+        let sumR = 0, sumG = 0, sumB = 0;
+        const numPixels = data.length / 4;
         for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          // Rec. 601 perceived luminance
-          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-          totalLuminance += luminance;
-
-          // Check if color is virtually flat / uniform
-          if (Math.abs(r - firstR) > 12 || Math.abs(g - firstG) > 12 || Math.abs(b - firstB) > 12) {
-            isSolidColor = false;
-          }
+          sumR += data[i];
+          sumG += data[i + 1];
+          sumB += data[i + 2];
         }
-        const averageLuminance = totalLuminance / (data.length / 4);
-        
-        // If average brightness is extremely low (black/dark) or it is a solid color (webcam covered/blocked)
-        if (averageLuminance < 18 || isSolidColor) {
+        const meanR = sumR / numPixels;
+        const meanG = sumG / numPixels;
+        const meanB = sumB / numPixels;
+
+        let varR = 0, varG = 0, varB = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          varR += Math.pow(data[i] - meanR, 2);
+          varG += Math.pow(data[i + 1] - meanG, 2);
+          varB += Math.pow(data[i + 2] - meanB, 2);
+        }
+        const stdDevR = Math.sqrt(varR / numPixels);
+        const stdDevG = Math.sqrt(varG / numPixels);
+        const stdDevB = Math.sqrt(varB / numPixels);
+
+        // Rec. 601 perceived luminance (brightness) using mean colors
+        const averageLuminance = (0.299 * meanR) + (0.587 * meanG) + (0.114 * meanB);
+
+        // Webcam covered or single flat uniform color is characterized by extremely low variance across pixels (std dev < 15)
+        const isSolidColorOrLowVariance = (stdDevR < 15 && stdDevG < 15 && stdDevB < 15);
+
+        // If average brightness is extremely low (black/dark < 18) or standard deviation of color channels is tiny (webcam blocked/covered)
+        if (averageLuminance < 18 || isSolidColorOrLowVariance) {
           resolve(true);
         } else {
           resolve(false);
@@ -473,6 +480,9 @@ export default function ExamScreen() {
       if (isProcessing) return;
       isProcessing = true;
 
+      // Prepare compositeScreenshot fallback before try-catch
+      let compositeScreenshot = "";
+
       try {
         if (!webcamRef1.current) {
           isProcessing = false;
@@ -512,7 +522,7 @@ export default function ExamScreen() {
         }
 
         // Pack both camera angles into a composite evidence JSON payload
-        const compositeScreenshot = JSON.stringify({
+        compositeScreenshot = JSON.stringify({
           primary: screenshot1,
           secondary: screenshot2
         });
@@ -547,9 +557,34 @@ export default function ExamScreen() {
         if (response.ok) {
           const analysisResult = await response.json();
           await processProctoringAnalysis(analysisResult, compositeScreenshot);
+        } else {
+          // If server fails or rate limit hits, do not let them bypass face checking. Treat as face missing (faces_detected: 0) to raise alarm.
+          console.warn("Proctoring API returned failure status. Running unverified camera safety fallback.");
+          const fallbackAnalysis = {
+            faces_detected: 0,
+            head_movement: "normal",
+            eye_gaze: "center",
+            student_recognized: false,
+            excessive_movement: false,
+            desk_objects: [],
+            hand_objects: [],
+            warnings: ["Camera feed analysis failed to secure response! Please ensure your internet is stable and camera unblocked."]
+          };
+          await processProctoringAnalysis(fallbackAnalysis, compositeScreenshot);
         }
       } catch (err) {
-        console.error("Proctoring agent execution error:", err);
+        console.error("Proctoring agent execution error, falling back to safety check:", err);
+        const fallbackAnalysis = {
+          faces_detected: 0,
+          head_movement: "normal",
+          eye_gaze: "center",
+          student_recognized: false,
+          excessive_movement: false,
+          desk_objects: [],
+          hand_objects: [],
+          warnings: ["Camera transmission interrupted! Check physical webcam connection and try again."]
+        };
+        await processProctoringAnalysis(fallbackAnalysis, compositeScreenshot || "");
       } finally {
         isProcessing = false;
       }
@@ -734,7 +769,7 @@ export default function ExamScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent flex flex-col" ref={containerRef}>
+    <div className="min-h-screen bg-slate-50 flex flex-col" ref={containerRef}>
       {!examStarted ? (
         <div className="min-h-screen flex-1 flex items-center justify-center bg-transparent p-4">
           <Card className="w-full max-w-3xl border-white/20 bg-white/95 backdrop-blur-md shadow-2xl">
