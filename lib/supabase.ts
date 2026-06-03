@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Using the provided Supabase Project ID and API Key
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hsliulkmkjxnmknaxfkw.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_fsNr89qBv21JVUk5bET1bg_e_Jg7fmm';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bdzcvjnmxqblprwksvbi.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkemN2am5teHFibHByd2tzdmJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDcxNTksImV4cCI6MjA4NjU4MzE1OX0.4bz3eqRbAcO3ZAcZFPXaLicUZAf_3zztwPmCqPf-4hg';
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 

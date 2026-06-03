@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogOut, PlayCircle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import SupabaseSetup from "@/components/SupabaseSetup";
 
 interface Exam {
   id: string;
@@ -53,18 +54,26 @@ export default function StudentDashboard() {
           const session = sessions?.find(s => s.exam_id === exam.id);
           return {
             ...exam,
-            status: session?.status || 'pending'
+            status: (session?.status || 'pending') as any
           };
         });
 
-        setExams(examsWithStatus);
+        if (examsWithStatus.length === 0) {
+          setExams([
+            { id: "3491ebca-82ca-49a6-be5e-6fa2377fd001", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60, start_time: new Date().toISOString(), status: "pending" },
+            { id: "3491ebca-82ca-49a6-be5e-6fa2377fd002", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90, start_time: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
+            { id: "3491ebca-82ca-49a6-be5e-6fa2377fd003", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120, start_time: new Date(Date.now() + 86400000).toISOString(), status: "pending" },
+          ]);
+        } else {
+          setExams(examsWithStatus);
+        }
       } catch (error) {
         console.error("Error fetching exams, falling back to mock data:", error);
         // Fallback data so the app always works even if DB is unconfigured
         setExams([
-          { id: "exam-1", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60, start_time: new Date().toISOString(), status: "pending" },
-          { id: "exam-2", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90, start_time: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
-          { id: "exam-3", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120, start_time: new Date(Date.now() + 86400000).toISOString(), status: "pending" },
+          { id: "3491ebca-82ca-49a6-be5e-6fa2377fd001", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60, start_time: new Date().toISOString(), status: "pending" },
+          { id: "3491ebca-82ca-49a6-be5e-6fa2377fd002", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90, start_time: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
+          { id: "3491ebca-82ca-49a6-be5e-6fa2377fd003", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120, start_time: new Date(Date.now() + 86400000).toISOString(), status: "pending" },
         ]);
       } finally {
         setLoading(false);
@@ -92,8 +101,10 @@ export default function StudentDashboard() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 mt-8">
-        <div className="mb-8">
+      <main className="max-w-5xl mx-auto p-6 mt-4">
+        <SupabaseSetup />
+        
+        <div className="mb-8 mt-6">
           <h2 className="text-3xl font-bold text-slate-900">Your Exams</h2>
           <p className="text-slate-500 mt-2">Manage your upcoming and completed assessments.</p>
         </div>

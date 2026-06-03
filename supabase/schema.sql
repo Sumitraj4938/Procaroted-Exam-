@@ -1,5 +1,8 @@
 -- Supabase Schema for AI Proctored Exam System
 
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Drop existing tables to ensure a clean slate (WARNING: This deletes existing data in these tables)
 DROP TABLE IF EXISTS violations CASCADE;
 DROP TABLE IF EXISTS answers CASCADE;
