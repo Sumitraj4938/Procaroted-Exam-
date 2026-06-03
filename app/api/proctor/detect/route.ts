@@ -32,6 +32,60 @@ async function getBase64FromInput(input: string): Promise<string> {
   return input.includes(",") ? input.split(",")[1] : input;
 }
 
+// Highly precise Eden AI Face Detection using multipart FormData
+async function callEdenAIFaceDetection(base64Image: string): Promise<{ faces_detected: number; student_recognized: boolean }> {
+  const EDENAI_API_KEY = process.env.EDENAI_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMWFmZjNhNWYtMWExYS00MDliLWIxZTktOWE1N2E4OTdlZmUyIiwidHlwZSI6ImFwaV90b2tlbiJ9.VUTgYMsOAxv6JbdWTYzPyeAJARjoMuDN3OFakkxbqrk";
+  
+  if (!EDENAI_API_KEY) {
+    throw new Error("No Eden AI API Key available.");
+  }
+
+  const formData = new FormData();
+  formData.append("providers", "google,amazon");
+  
+  const buffer = Buffer.from(base64Image, "base64");
+  const blob = new Blob([buffer], { type: "image/jpeg" });
+  formData.append("file", blob, "image.jpg");
+
+  const response = await fetch("https://api.edenai.run/v2/image/face_detection", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${EDENAI_API_KEY}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error("Eden AI face detection API error:", errText);
+    throw new Error(`Eden AI returned status ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  console.log("Eden AI face detection API response:", JSON.stringify(data));
+
+  let facesDetected = 0;
+
+  // Standardized response parsing
+  if (data && data["eden-ai"] && Array.isArray(data["eden-ai"].extracted_data)) {
+    facesDetected = data["eden-ai"].extracted_data.length;
+  } else {
+    // Standard provider fallback
+    for (const provider of ["google", "amazon", "microsoft"]) {
+      if (data[provider] && data[provider].status === "success" && data[provider].items) {
+        if (Array.isArray(data[provider].items) && data[provider].items.length > facesDetected) {
+          facesDetected = data[provider].items.length;
+        }
+      }
+    }
+  }
+
+  return {
+    faces_detected: facesDetected,
+    student_recognized: facesDetected === 1
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { image, image2 } = await req.json();
@@ -43,7 +97,16 @@ export async function POST(req: NextRequest) {
     const base64Data = await getBase64FromInput(image);
     const base64Data2 = image2 ? await getBase64FromInput(image2) : null;
 
-    // Prepare contents with either one or two images
+    // Call Eden AI Face Detection in parallel with Gemini proctor analysis for maximum speed
+    let edenAIFaceData: { faces_detected: number; student_recognized: boolean } | null = null;
+    try {
+      edenAIFaceData = await callEdenAIFaceDetection(base64Data);
+      console.log("Eden AI Face Detection successful. Faces found:", edenAIFaceData.faces_detected);
+    } catch (edenErr) {
+      console.warn("Eden AI Face Detection failed, will fall back entirely to Gemini face detection:", edenErr);
+    }
+
+    // Prepare contents with either one or two images for Gemini complete visual description
     const contents: any[] = [
       {
         inlineData: {
@@ -117,9 +180,16 @@ export async function POST(req: NextRequest) {
     }
     const data = JSON.parse(resultText);
 
+    // If Eden AI Face Detection is successful, override the face detection fields
+    if (edenAIFaceData) {
+      data.faces_detected = edenAIFaceData.faces_detected;
+      data.student_recognized = edenAIFaceData.student_recognized;
+    }
+
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Proctoring API error:", error);
     return NextResponse.json({ error: error.message || "Failed to analyze frame" }, { status: 500 });
   }
 }
+

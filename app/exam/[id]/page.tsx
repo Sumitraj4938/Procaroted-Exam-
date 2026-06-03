@@ -120,6 +120,7 @@ export default function ExamScreen() {
   const containerRef = useRef<HTMLDivElement>(null);
   const consecutiveScreenshotFailures = useRef<number>(0);
   const activeSessionIdRef = useRef<string | null>(null);
+  const faceMissingSinceRef = useRef<number | null>(null);
 
   // Pre-fetch or restore session ID mapping to ensure robust telemetry
   useEffect(() => {
@@ -370,38 +371,58 @@ export default function ExamScreen() {
 
     // 1. Check for no face detected / face is too dark/not visible in frame (high) - Prioritized first for precise detection
     if (faces_detected === 0) {
-      type = "no_face";
-      desc = "No face detected or face is in dark. Please reposition yourself clearly or turn on a light to be recognized.";
-      severity = "high";
-      violationFound = true;
+      if (faceMissingSinceRef.current === null) {
+        faceMissingSinceRef.current = Date.now();
+        console.log("No face detected inside target frame. Starting 3-second grace period.");
+        // Face has just gone missing, give 3 seconds grace period to align
+        return;
+      } else {
+        const elapsed = (Date.now() - faceMissingSinceRef.current) / 1000;
+        console.log(`Face missing for ${elapsed}s...`);
+        if (elapsed >= 2.8) { // Account for slight timer fluctuations
+          type = "no_face";
+          desc = "Student face is missing or obscured for more than 3 seconds! This is a violation of exam rules & regulations.";
+          severity = "critical";
+          violationFound = true;
+        } else {
+          // Inside 3 seconds grace period - wait for next check to secure
+          return;
+        }
+      }
     }
-    // 2. Check for multiple faces (critical) - Prioritized second
-    else if (faces_detected > 1) {
-      type = "multiple_faces";
-      desc = "Multiple faces detected. Only the authorized student is permitted in frame.";
-      severity = "critical";
-      violationFound = true;
-    }
-    // 3. Check for student identity mismatch (critical)
-    else if (!student_recognized) {
-      type = "identity_mismatch";
-      desc = "Candidate identity mismatch: face in feed does not match the registered user.";
-      severity = "critical";
-      violationFound = true;
-    }
-    // 4. Check for suspicious head movement/looking away (medium)
-    else if (head_movement !== "normal" && head_movement !== "") {
-      type = "head_movement";
-      desc = `Suspicious head movement: looking ${head_movement.replace('looking_', '')}. Keep your gaze on the screen.`;
-      severity = "medium";
-      violationFound = true;
-    }
-    // 5. Check for excessive physical or structural shifting (high)
-    else if (analysis.excessive_movement === true) {
-      type = "excessive_movement";
-      desc = "Excessive head, shoulder, or body shifting detected. Please sit still and stay focused.";
-      severity = "high";
-      violationFound = true;
+    // 2. Check for other violations or reset face missing timer if 1 face is verified
+    else {
+      // Face is verified and present, reset missing timer
+      faceMissingSinceRef.current = null;
+      
+      // A. Check for multiple faces (critical)
+      if (faces_detected > 1) {
+        type = "multiple_faces";
+        desc = "Multiple faces detected. Only the authorized student is permitted in frame.";
+        severity = "critical";
+        violationFound = true;
+      }
+      // B. Check for student identity mismatch (critical)
+      else if (!student_recognized) {
+        type = "identity_mismatch";
+        desc = "Candidate identity mismatch: face in feed does not match the registered user.";
+        severity = "critical";
+        violationFound = true;
+      }
+      // C. Check for suspicious head movement/looking away (medium)
+      else if (head_movement !== "normal" && head_movement !== "") {
+        type = "head_movement";
+        desc = `Suspicious head movement: looking ${head_movement.replace('looking_', '')}. Keep your gaze on the screen.`;
+        severity = "medium";
+        violationFound = true;
+      }
+      // D. Check for excessive physical or structural shifting (high)
+      else if (analysis.excessive_movement === true) {
+        type = "excessive_movement";
+        desc = "Excessive head, shoulder, or body shifting detected. Please sit still and stay focused.";
+        severity = "high";
+        violationFound = true;
+      }
     }
 
     if (violationFound) {
@@ -518,8 +539,8 @@ export default function ExamScreen() {
       }
     };
 
-    // Optimized check every 6 seconds to prevent browser lag and API rate limiting
-    const proctorInterval = setInterval(runAIProctoring, 6000);
+    // Optimized check every 3 seconds to accurately detect if face is missing for more than 3 seconds
+    const proctorInterval = setInterval(runAIProctoring, 3000);
 
     // Instant mouse leave detection
     const handleMouseLeave = (e: MouseEvent) => {
@@ -1030,8 +1051,42 @@ export default function ExamScreen() {
                   <VideoOff className="w-8 h-8" />
                 </div>
               )}
-              {cameraActive && cheatingScore < 80 && (
-                <div className="absolute inset-0 border-2 border-emerald-500/50 opacity-45 m-3 rounded-sm pointer-events-none" />
+              {cameraActive && (
+                <div 
+                  className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 border-2 rounded-xl transition-all duration-300 flex flex-col items-center justify-between p-2.5 select-none pointer-events-none z-10 ${
+                    lastAnalysis && lastAnalysis.faces_detected === 0 
+                    ? "border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse"
+                    : lastAnalysis && lastAnalysis.faces_detected > 1
+                    ? "border-amber-500 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+                    : "border-emerald-500 bg-emerald-500/5 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                  }`}
+                >
+                  {/* Target Corners */}
+                  <div className="absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 rounded-tl border-inherit" />
+                  <div className="absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 rounded-tr border-inherit" />
+                  <div className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 rounded-bl border-inherit" />
+                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 rounded-br border-inherit" />
+
+                  <div />
+                  <div className={`text-[9px] font-bold tracking-widest text-center px-1.5 py-0.5 rounded backdrop-blur-md uppercase ${
+                    lastAnalysis && lastAnalysis.faces_detected === 0
+                    ? "text-red-500 bg-red-950/20"
+                    : lastAnalysis && lastAnalysis.faces_detected > 1
+                    ? "text-amber-500 bg-amber-950/20"
+                    : "text-emerald-500 bg-emerald-950/20"
+                  }`}>
+                    {lastAnalysis && lastAnalysis.faces_detected === 0 
+                      ? "FACE MISSING" 
+                      : lastAnalysis && lastAnalysis.faces_detected > 1
+                      ? "MULTIPLE FACES"
+                      : "FACE VERIFIED"}
+                  </div>
+                  <div className="text-[7px] font-mono opacity-85 text-center text-slate-300">
+                    {lastAnalysis && lastAnalysis.faces_detected === 0 
+                      ? "RE-ALIGN IN < 3s"
+                      : "ALIGN IN SQUARE"}
+                  </div>
+                </div>
               )}
               <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-semibold tracking-wider uppercase select-none">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
