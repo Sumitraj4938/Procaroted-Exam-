@@ -169,11 +169,107 @@ export default function AdminDashboard() {
 
       setSessions(mergedSessions as any);
     } catch (error) {
-      console.error("Error fetching sessions:", error);
-      // Ensure fallbacks match, with Alice, Bob Smith, and Charlie Brown removed
-      setSessions([
-        { id: "s4", user_id: "u4", exam_id: "exam-1", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
-      ] as any);
+      console.warn("Relational join query failed inside fetchSessions. Running client-side merge fallback:", error);
+      try {
+        // Fetch exam sessions independently
+        const { data: sessionData, error: sessionErr } = await supabase
+          .from('exam_sessions')
+          .select('id, user_id, exam_id, status, cheating_score, score, answers_json, started_at, completed_at');
+
+        if (sessionErr) throw sessionErr;
+
+        // Fetch user cache independently
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id, full_name, email');
+
+        // Fetch exam cache independently
+        const { data: examData } = await supabase
+          .from('exams')
+          .select('id, title');
+
+        const mergedSessions: any[] = (sessionData || []).map((s: any) => {
+          const matchedUser = (userData || []).find((u: any) => toSafeUUID(u.id) === toSafeUUID(s.user_id));
+          const matchedExam = (examData || []).find((e: any) => toSafeUUID(e.id) === toSafeUUID(s.exam_id));
+          return {
+            id: s.id,
+            user_id: s.user_id,
+            exam_id: s.exam_id,
+            status: s.status || "completed",
+            cheating_score: s.cheating_score ?? 0,
+            score: s.score ?? 0,
+            answers_json: s.answers_json || [],
+            users: {
+              full_name: matchedUser?.full_name || "Student Candidate",
+              email: matchedUser?.email || "student@example.com"
+            },
+            exams: {
+              title: matchedExam?.title || "Advanced Exam"
+            }
+          };
+        });
+
+        // Merge local storage
+        if (typeof window !== "undefined") {
+          try {
+            const localResultsRaw = localStorage.getItem("synced_exam_results");
+            const syncedUsersRaw = localStorage.getItem("synced_users");
+            const localResults = localResultsRaw ? JSON.parse(localResultsRaw) : [];
+            const localUsers = syncedUsersRaw ? JSON.parse(syncedUsersRaw) : [];
+
+            localResults.forEach((lr: any) => {
+              const existingIdx = mergedSessions.findIndex(
+                (s: any) => toSafeUUID(s.user_id) === toSafeUUID(lr.user_id) && toSafeUUID(s.exam_id) === toSafeUUID(lr.exam_id)
+              );
+
+              const matchedUser = localUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(lr.user_id));
+              const matchedUserFullName = matchedUser?.full_name || "Student Candidate";
+              const matchedUserEmail = matchedUser?.email || "student@example.com";
+              const examTitle = defaultExams.find(e => toSafeUUID(e.id) === toSafeUUID(lr.exam_id))?.title || "Advanced Exam";
+
+              const localSessionEntry = {
+                id: lr.session_id || toSafeUUID(`${lr.user_id}_${lr.exam_id}`),
+                user_id: toSafeUUID(lr.user_id),
+                exam_id: toSafeUUID(lr.exam_id),
+                status: "completed",
+                cheating_score: lr.cheating_score ?? 0,
+                score: lr.score ?? 0,
+                answers_json: lr.answers || [],
+                users: {
+                  full_name: matchedUserFullName,
+                  email: matchedUserEmail
+                },
+                exams: {
+                  title: examTitle
+                }
+              };
+
+              if (existingIdx >= 0) {
+                mergedSessions[existingIdx] = {
+                  ...mergedSessions[existingIdx],
+                  status: "completed",
+                  score: mergedSessions[existingIdx].score ?? lr.score ?? 0,
+                  answers_json: mergedSessions[existingIdx].answers_json || lr.answers || [],
+                  users: mergedSessions[existingIdx].users || localSessionEntry.users,
+                  exams: mergedSessions[existingIdx].exams || localSessionEntry.exams
+                };
+              } else {
+                mergedSessions.push(localSessionEntry);
+              }
+            });
+          } catch (e) {
+            console.warn("Could not merge local storage in fallback stream:", e);
+          }
+        }
+
+        setSessions(mergedSessions);
+      } catch (fallbackError) {
+        console.error("Independent fetch fallback also failed:", fallbackError);
+        // Ensure fallbacks match, with Alice, Bob Smith, and Charlie Brown removed
+        setSessions([
+          { id: "s4", user_id: "u4", exam_id: "exam-1", status: "terminated", cheating_score: 95, users: { full_name: "Diana Prince", email: "diana@example.com" }, exams: { title: "Advanced Mathematics" } },
+        ] as any);
+      }
     } finally {
       setLoading(false);
     }

@@ -108,16 +108,21 @@ export default function SessionReviewPage() {
 
         if (violationsErr) throw violationsErr;
 
-        if (violationsData && violationsData.length > 0) {
-          const processedList = violationsData.map((v, idx) => ({
-            id: v.id,
-            time: v.video_timestamp_seconds || 120 + idx * 300,
-            type: v.violation_type || "manual_flag",
-            severity: v.severity || "medium",
-            desc: v.description || "Suspicious behavior logged",
-            screenshot: v.screenshot || ""
-          }));
-          setViolations(processedList);
+        if (sessionInfo || sessionData) {
+          // If a real DB session exists, only load real violations logged or keep empty if student didn't cheat!
+          if (violationsData && violationsData.length > 0) {
+            const processedList = violationsData.map((v, idx) => ({
+              id: v.id,
+              time: v.video_timestamp_seconds || 120 + idx * 300,
+              type: v.violation_type || "manual_flag",
+              severity: v.severity || "medium",
+              desc: v.description || "Suspicious behavior logged",
+              screenshot: v.screenshot || ""
+            }));
+            setViolations(processedList);
+          } else {
+            setViolations([]);
+          }
         } else {
           // Fallback static mocks if no live violations are saved yet to ensure demo works
           setViolations([
@@ -382,7 +387,13 @@ export default function SessionReviewPage() {
               {(() => {
                 const currentV = violations.find(v => Math.abs(v.time - currentTime) < 15) || violations[0];
                 if (!currentV) {
-                  return <p className="text-sm text-slate-500">No violations logged to view.</p>;
+                  return (
+                    <div className="py-6 text-center w-full text-slate-500">
+                      <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
+                      <p className="text-xs font-bold text-slate-700">Clean Session Evidence</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">The student did not commit any proctoring infractions.</p>
+                    </div>
+                  );
                 }
                 const dual = getDualScreenshots(currentV.screenshot);
                 return (
@@ -547,40 +558,48 @@ export default function SessionReviewPage() {
             </CardHeader>
             <CardContent className="p-0 flex-1 overflow-y-auto bg-white">
               <div className="divide-y divide-slate-100">
-                {violations.map((v) => (
-                  <div 
-                    key={v.id} 
-                    className={`p-4 hover:bg-slate-50 cursor-pointer transition-colors border-l-4 ${
-                      Math.abs(v.time - currentTime) < 15 ? 'bg-blue-50/80 border-blue-500' :
-                      v.severity === 'critical' ? 'border-red-500' :
-                      v.severity === 'high' ? 'border-orange-500' : 'border-amber-400'
-                    }`}
-                    onClick={() => setCurrentTime(v.time)}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-mono text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        {formatTime(v.time)}
-                      </span>
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        v.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                        v.severity === 'high' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {v.severity}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 mt-2 items-center">
-                      {v.screenshot && (
-                        <div className="w-10 h-8 rounded border border-slate-200 overflow-hidden shrink-0">
-                          <img src={v.screenshot} alt="Thumbnail proof" className="w-full h-full object-cover" />
+                {violations.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">
+                    <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500 mb-2.5" />
+                    <p className="text-sm font-bold text-slate-700">Perfect Proctoring Record</p>
+                    <p className="text-xs text-slate-500 mt-1">No proctoring anomalies or suspicious actions recorded for this candidate.</p>
+                  </div>
+                ) : (
+                  violations.map((v) => (
+                    <div 
+                      key={v.id} 
+                      className={`p-4 hover:bg-slate-50 cursor-pointer transition-colors border-l-4 ${
+                        Math.abs(v.time - currentTime) < 15 ? 'bg-blue-50/80 border-blue-500' :
+                        v.severity === 'critical' ? 'border-red-500' :
+                        v.severity === 'high' ? 'border-orange-500' : 'border-amber-400'
+                      }`}
+                      onClick={() => setCurrentTime(v.time)}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-mono text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          {formatTime(v.time)}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                          v.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                          v.severity === 'high' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {v.severity}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 mt-2 items-center">
+                        {v.screenshot && (
+                          <div className="w-10 h-8 rounded border border-slate-200 overflow-hidden shrink-0">
+                            <img src={v.screenshot} alt="Thumbnail proof" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950 capitalize">{v.type.replace('_', ' ')}</p>
+                          <p className="text-xs text-slate-600 line-clamp-1 mt-0.5">{v.desc}</p>
                         </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950 capitalize">{v.type.replace('_', ' ')}</p>
-                        <p className="text-xs text-slate-600 line-clamp-1 mt-0.5">{v.desc}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
