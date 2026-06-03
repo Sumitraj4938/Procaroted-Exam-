@@ -426,11 +426,27 @@ export default function ExamScreen() {
     }
 
     if (violationFound) {
-      addWarning(desc, severity);
-      setShowBigAlert({ message: desc, severity });
-      await saveViolation(type, desc, severity, screenshot);
+      // Prevent duplicate warnings/violations to avoid cheating score death-spiral
+      const isAlreadyShowingType = showBigAlert && (
+        (type === "no_face" && showBigAlert.message.includes("face is missing")) ||
+        (type === "multiple_faces" && showBigAlert.message.includes("Multiple faces")) ||
+        (type === "identity_mismatch" && showBigAlert.message.includes("identity mismatch"))
+      );
+
+      if (!isAlreadyShowingType) {
+        addWarning(desc, severity);
+        setShowBigAlert({ message: desc, severity, type });
+        await saveViolation(type, desc, severity, screenshot);
+      }
     } else {
-      setShowBigAlert(null);
+      // Auto-dismiss physical webcam violations once student repositions correctly
+      if (showBigAlert && (
+        showBigAlert.message.includes("face is missing") ||
+        showBigAlert.message.includes("Multiple faces") ||
+        showBigAlert.message.includes("identity mismatch")
+      )) {
+        setShowBigAlert(null);
+      }
     }
 
     // Process any other custom environmental/device warnings produced by Gemini analysis
@@ -444,7 +460,7 @@ export default function ExamScreen() {
         await saveViolation("unpermitted_materials", warn, "high", screenshot);
       }
     }
-  }, [addWarning, saveViolation]);
+  }, [addWarning, saveViolation, showBigAlert]);
 
   // Real-Time AI Proctoring Loop (every 3 seconds)
   useEffect(() => {
@@ -717,177 +733,175 @@ export default function ExamScreen() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
-  if (!examStarted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-transparent p-4" ref={containerRef}>
-        <Card className="w-full max-w-3xl border-white/20 bg-white/95 backdrop-blur-md shadow-2xl">
-          <CardHeader>
-            <CardTitle className="text-2xl flex items-center gap-2">
-              <ShieldCheck className="text-blue-600" />
-              Twin Webcam Pre-Check Setup
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {hasSavedProgress && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-xs sm:text-sm text-emerald-800 flex items-start gap-3 shadow-3xs">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-bounce" />
-                <div>
-                  <h4 className="font-bold text-emerald-900 mb-1">
-                    Saved Exam Progress Detected!
-                  </h4>
-                  <p className="opacity-90 leading-relaxed font-medium">
-                    We found active exam progress from your previous window or session. 
-                    Upon confirming your cameras, you will resume exactly at <strong>Question {currentQuestion + 1}</strong> with your options selection and <strong>{formatTime(timeLeft)}</strong> of remaining time fully intact.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs sm:text-sm text-blue-850">
-              <h4 className="font-bold mb-2 flex items-center gap-2 text-blue-900">
-                <AlertTriangle className="w-4 h-4 text-blue-700" />
-                Dual camera security activated:
-              </h4>
-              <ul className="list-disc pl-5 space-y-1.5 opacity-90">
-                <li>Configure <strong>Front Camera</strong> to screen facial center.</li>
-                <li>Configure <strong>Side Camera</strong> (e.g. secondary external webcam or phone angle) to overlay environmental surrounding Desk area.</li>
-                <li>Remain in high-contrast view with no screens, secondary aids, or partners detected.</li>
-              </ul>
-            </div>
-            
-            {cameraActive && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">📷 Camera 1: Primary Face Camera</label>
-                  <select 
-                    className="w-full text-xs sm:text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none hover:border-slate-300 transition-colors"
-                    value={selectedCameraId1}
-                    onChange={(e) => setSelectedCameraId1(e.target.value)}
-                  >
-                    {videoDevices.map((device, idx) => (
-                      <option key={device.deviceId} value={device.deviceId}>
-                        {device.label || `Camera ${idx + 1}`}
-                      </option>
-                    ))}
-                    {videoDevices.length === 0 && <option value="">Searching for cameras...</option>}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">📹 Camera 2: Side Environment Camera</label>
-                  <select 
-                    className="w-full text-xs sm:text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none hover:border-slate-300 transition-colors"
-                    value={selectedCameraId2}
-                    onChange={(e) => setSelectedCameraId2(e.target.value)}
-                  >
-                    <option value="">-- Select Secondary Camera --</option>
-                    {videoDevices.map((device, idx) => (
-                      <option key={device.deviceId} value={device.deviceId} disabled={device.deviceId === selectedCameraId1}>
-                        {device.label || `Camera ${idx + 1}`} {device.deviceId === selectedCameraId1 ? "(In Use)" : ""}
-                      </option>
-                    ))}
-                    <option value="simulated">🔄 Virtual Simulated Desk Camera (Continuous Room Feed)</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Box 1 */}
-              <div className="flex flex-col items-center justify-center bg-slate-900 rounded-xl p-3 h-52 relative overflow-hidden border border-slate-200/50 shadow-sm">
-                {cameraActive && selectedCameraId1 ? (
-                  <Webcam
-                    audio={false}
-                    ref={webcamRef1}
-                    screenshotFormat="image/jpeg"
-                    screenshotQuality={0.6}
-                    videoConstraints={{ 
-                      deviceId: { exact: selectedCameraId1 },
-                      width: { ideal: 640 },
-                      height: { ideal: 480 }
-                    }}
-                    className="w-full h-full object-cover rounded-lg"
-                    mirrored
-                  />
-                ) : (
-                  <div className="text-center text-slate-400">
-                    <Video className="w-8 h-8 mx-auto mb-1.5 opacity-40 text-blue-500" />
-                    <p className="text-xs font-semibold">Primary Cam Inactive</p>
-                    <Button variant="outline" size="sm" className="mt-3 text-slate-900 border-slate-600 bg-white" onClick={() => setCameraActive(true)}>
-                      Request Access
-                    </Button>
-                  </div>
-                )}
-                {cameraActive && (
-                  <div className="absolute bottom-2.5 left-2.5 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                    📷 Camera 1 (Front Face)
-                  </div>
-                )}
-              </div>
-
-              {/* Box 2 */}
-              <div className="flex flex-col items-center justify-center bg-slate-900 rounded-xl p-3 h-52 relative overflow-hidden border border-slate-200/50 shadow-sm">
-                {cameraActive && selectedCameraId2 === "simulated" ? (
-                  <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-950 flex items-center justify-center">
-                    <img 
-                      src="https://picsum.photos/seed/deskview/400/300"
-                      alt="Simulated desk view"
-                      className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity"
-                    />
-                    <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] px-2 py-0.5 rounded font-mono font-bold animate-pulse uppercase tracking-wider">
-                      ✨ Active Simulated Feed
-                    </div>
-                  </div>
-                ) : cameraActive && selectedCameraId2 ? (
-                  <Webcam
-                    audio={false}
-                    ref={webcamRef2}
-                    screenshotFormat="image/jpeg"
-                    screenshotQuality={0.6}
-                    videoConstraints={{ 
-                      deviceId: { exact: selectedCameraId2 },
-                      width: { ideal: 640 },
-                      height: { ideal: 480 }
-                    }}
-                    className="w-full h-full object-cover rounded-lg"
-                    mirrored
-                  />
-                ) : (
-                  <div className="text-center text-slate-400 p-4">
-                    <Video className="w-8 h-8 mx-auto mb-1.5 opacity-40 text-blue-500" />
-                    <p className="text-xs font-semibold">Secondary Cam Inactive</p>
-                    {cameraActive && (
-                      <p className="text-[10px] opacity-60 max-w-[200px] mt-1 text-slate-500">
-                        Please connect a secondary camera, or choose &quot;Virtual Simulated Desk Camera&quot; above to test the proctoring.
-                      </p>
-                    )}
-                  </div>
-                )}
-                {cameraActive && (
-                  <div className="absolute bottom-2.5 left-2.5 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                    📹 Camera 2 (Side Desk)
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-          <div className="p-6 pt-0 flex flex-col sm:flex-row items-center justify-between gap-4">
-            {hasSavedProgress && (
-              <span className="text-xs text-slate-500 italic font-medium">
-                Detected progress: {Object.keys(selectedAnswers).length} questions answered
-              </span>
-            )}
-            <Button size="lg" onClick={startExam} disabled={!cameraActive || !selectedCameraId1 || !selectedCameraId2} className={hasSavedProgress ? "bg-emerald-600 hover:bg-emerald-700" : ""}>
-              {hasSavedProgress ? "Restore Progress & Resume Exam" : "Confirm Inputs & Start Exam"}
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-transparent flex flex-col" ref={containerRef}>
+      {!examStarted ? (
+        <div className="min-h-screen flex-1 flex items-center justify-center bg-transparent p-4">
+          <Card className="w-full max-w-3xl border-white/20 bg-white/95 backdrop-blur-md shadow-2xl">
+            <CardHeader>
+              <CardTitle className="text-2xl flex items-center gap-2">
+                <ShieldCheck className="text-blue-600" />
+                Twin Webcam Pre-Check Setup
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {hasSavedProgress && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-xs sm:text-sm text-emerald-800 flex items-start gap-3 shadow-3xs">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-bounce" />
+                  <div>
+                    <h4 className="font-bold text-emerald-900 mb-1">
+                      Saved Exam Progress Detected!
+                    </h4>
+                    <p className="opacity-90 leading-relaxed font-medium">
+                      We found active exam progress from your previous window or session. 
+                      Upon confirming your cameras, you will resume exactly at <strong>Question {currentQuestion + 1}</strong> with your options selection and <strong>{formatTime(timeLeft)}</strong> of remaining time fully intact.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs sm:text-sm text-blue-850">
+                <h4 className="font-bold mb-2 flex items-center gap-2 text-blue-900">
+                  <AlertTriangle className="w-4 h-4 text-blue-700" />
+                  Dual camera security activated:
+                </h4>
+                <ul className="list-disc pl-5 space-y-1.5 opacity-90">
+                  <li>Configure <strong>Front Camera</strong> to screen facial center.</li>
+                  <li>Configure <strong>Side Camera</strong> (e.g. secondary external webcam or phone angle) to overlay environmental surrounding Desk area.</li>
+                  <li>Remain in high-contrast view with no screens, secondary aids, or partners detected.</li>
+                </ul>
+              </div>
+              
+              {cameraActive && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">📷 Camera 1: Primary Face Camera</label>
+                    <select 
+                      className="w-full text-xs sm:text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none hover:border-slate-300 transition-colors"
+                      value={selectedCameraId1}
+                      onChange={(e) => setSelectedCameraId1(e.target.value)}
+                    >
+                      {videoDevices.map((device, idx) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Camera ${idx + 1}`}
+                        </option>
+                      ))}
+                      {videoDevices.length === 0 && <option value="">Searching for cameras...</option>}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">📹 Camera 2: Side Environment Camera</label>
+                    <select 
+                      className="w-full text-xs sm:text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none hover:border-slate-300 transition-colors"
+                      value={selectedCameraId2}
+                      onChange={(e) => setSelectedCameraId2(e.target.value)}
+                    >
+                      <option value="">-- Select Secondary Camera --</option>
+                      {videoDevices.map((device, idx) => (
+                        <option key={device.deviceId} value={device.deviceId} disabled={device.deviceId === selectedCameraId1}>
+                          {device.label || `Camera ${idx + 1}`} {device.deviceId === selectedCameraId1 ? "(In Use)" : ""}
+                        </option>
+                      ))}
+                      <option value="simulated">🔄 Virtual Simulated Desk Camera (Continuous Room Feed)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Box 1 */}
+                <div className="flex flex-col items-center justify-center bg-slate-900 rounded-xl p-3 h-52 relative overflow-hidden border border-slate-200/50 shadow-sm">
+                  {cameraActive && selectedCameraId1 ? (
+                    <Webcam
+                      audio={false}
+                      ref={webcamRef1}
+                      screenshotFormat="image/jpeg"
+                      screenshotQuality={0.6}
+                      videoConstraints={{ 
+                        deviceId: { exact: selectedCameraId1 },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                      }}
+                      className="w-full h-full object-cover rounded-lg"
+                      mirrored
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400">
+                      <Video className="w-8 h-8 mx-auto mb-1.5 opacity-40 text-blue-500" />
+                      <p className="text-xs font-semibold">Primary Cam Inactive</p>
+                      <Button variant="outline" size="sm" className="mt-3 text-slate-900 border-slate-600 bg-white" onClick={() => setCameraActive(true)}>
+                        Request Access
+                      </Button>
+                    </div>
+                  )}
+                  {cameraActive && (
+                    <div className="absolute bottom-2.5 left-2.5 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                      📷 Camera 1 (Front Face)
+                    </div>
+                  )}
+                </div>
+
+                {/* Box 2 */}
+                <div className="flex flex-col items-center justify-center bg-slate-900 rounded-xl p-3 h-52 relative overflow-hidden border border-slate-200/50 shadow-sm">
+                  {cameraActive && selectedCameraId2 === "simulated" ? (
+                    <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-950 flex items-center justify-center">
+                      <img 
+                        src="https://picsum.photos/seed/deskview/400/300"
+                        alt="Simulated desk view"
+                        className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity"
+                      />
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] px-2 py-0.5 rounded font-mono font-bold animate-pulse uppercase tracking-wider">
+                        ✨ Active Simulated Feed
+                      </div>
+                    </div>
+                  ) : cameraActive && selectedCameraId2 ? (
+                    <Webcam
+                      audio={false}
+                      ref={webcamRef2}
+                      screenshotFormat="image/jpeg"
+                      screenshotQuality={0.6}
+                      videoConstraints={{ 
+                        deviceId: { exact: selectedCameraId2 },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                      }}
+                      className="w-full h-full object-cover rounded-lg"
+                      mirrored
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400 p-4">
+                      <Video className="w-8 h-8 mx-auto mb-1.5 opacity-40 text-blue-500" />
+                      <p className="text-xs font-semibold">Secondary Cam Inactive</p>
+                      {cameraActive && (
+                        <p className="text-[10px] opacity-60 max-w-[200px] mt-1 text-slate-500">
+                          Please connect a secondary camera, or choose &quot;Virtual Simulated Desk Camera&quot; above to test the proctoring.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {cameraActive && (
+                    <div className="absolute bottom-2.5 left-2.5 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                      📹 Camera 2 (Side Desk)
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+            <div className="p-6 pt-0 flex flex-col sm:flex-row items-center justify-between gap-4">
+              {hasSavedProgress && (
+                <span className="text-xs text-slate-500 italic font-medium">
+                  Detected progress: {Object.keys(selectedAnswers).length} questions answered
+                </span>
+              )}
+              <Button size="lg" onClick={startExam} disabled={!cameraActive || !selectedCameraId1 || !selectedCameraId2} className={hasSavedProgress ? "bg-emerald-600 hover:bg-emerald-700" : ""}>
+                {hasSavedProgress ? "Restore Progress & Resume Exam" : "Confirm Inputs & Start Exam"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : (
+        <>
       {/* Top Navigation Bar */}
       <header className="bg-white/95 backdrop-blur-md border-b px-6 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-3">
@@ -1301,6 +1315,8 @@ export default function ExamScreen() {
           </div>
         </aside>
       </div>
+        </>
+      )}
 
       {/* Submit Modal Overlay */}
       {showSubmitModal && (
