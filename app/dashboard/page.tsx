@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, PlayCircle, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { LogOut, PlayCircle, CheckCircle, Clock, Loader2, Shield, FileText, Sparkles, Trophy } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import SupabaseSetup from "@/components/SupabaseSetup";
 
 interface Exam {
   id: string;
@@ -101,12 +100,47 @@ export default function StudentDashboard() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 mt-4">
-        <SupabaseSetup />
+      <main className="max-w-5xl mx-auto p-4 sm:p-6 mt-2">
+        {/* Professional Metrics Dashboard Panel for Student */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <div className="bg-white border border-slate-200/75 rounded-xl p-4 flex items-center gap-4 shadow-3xs transition-all hover:border-slate-300">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assigned Assessments</span>
+              <span className="text-xl font-bold text-slate-800">{exams.length}</span>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200/75 rounded-xl p-4 flex items-center gap-4 shadow-3xs transition-all hover:border-slate-300">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+              <Trophy className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed Sessions</span>
+              <span className="text-xl font-bold text-slate-800">
+                {exams.filter(e => e.status === 'completed' || e.status === 'terminated').length}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200/75 rounded-xl p-4 flex items-center gap-4 shadow-3xs transition-all hover:border-slate-300">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Automated Proctoring</span>
+              <span className="text-xs font-black text-blue-600 flex items-center gap-1 mt-0.5">
+                <Sparkles className="w-3.5 h-3.5" /> AI SECURE ACTIVE
+              </span>
+            </div>
+          </div>
+        </div>
         
-        <div className="mb-8 mt-6">
-          <h2 className="text-3xl font-bold text-slate-900">Your Exams</h2>
-          <p className="text-slate-500 mt-2">Manage your upcoming and completed assessments.</p>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Assigned Examinations</h2>
+          <p className="text-sm text-slate-500 mt-1">Select an exam below to begin the secure camera, microphone, and browser-lock proctored examination.</p>
         </div>
 
         {loading ? (
