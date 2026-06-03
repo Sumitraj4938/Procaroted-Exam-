@@ -26,7 +26,7 @@ import {
   Mail, 
   UserCheck 
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, toSafeUUID } from "@/lib/supabase";
 import { dbSync, DBUser, DBCustomQuestion } from "@/lib/dbSync";
 
 interface StudentSession {
@@ -120,18 +120,18 @@ export default function AdminDashboard() {
 
           localResults.forEach((lr: any) => {
             const existingIdx = mergedSessions.findIndex(
-              (s: any) => s.user_id === lr.user_id && s.exam_id === lr.exam_id
+              (s: any) => toSafeUUID(s.user_id) === toSafeUUID(lr.user_id) && toSafeUUID(s.exam_id) === toSafeUUID(lr.exam_id)
             );
 
-            const matchedUser = localUsers.find((u: any) => u.id === lr.user_id);
+            const matchedUser = localUsers.find((u: any) => toSafeUUID(u.id) === toSafeUUID(lr.user_id));
             const matchedUserFullName = matchedUser?.full_name || "Student Candidate";
             const matchedUserEmail = matchedUser?.email || "student@example.com";
-            const examTitle = defaultExams.find(e => e.id === lr.exam_id)?.title || "Advanced Exam";
+            const examTitle = defaultExams.find(e => toSafeUUID(e.id) === toSafeUUID(lr.exam_id))?.title || "Advanced Exam";
 
             const localSessionEntry = {
-              id: lr.session_id || lr.exam_id,
-              user_id: lr.user_id,
-              exam_id: lr.exam_id,
+              id: lr.session_id || toSafeUUID(`${lr.user_id}_${lr.exam_id}`),
+              user_id: toSafeUUID(lr.user_id),
+              exam_id: toSafeUUID(lr.exam_id),
               status: "completed",
               cheating_score: lr.cheating_score ?? 0,
               users: {

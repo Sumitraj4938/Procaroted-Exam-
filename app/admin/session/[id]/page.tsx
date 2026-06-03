@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore } from "@/store";
-import { supabase } from "@/lib/supabase";
+import { supabase, toSafeUUID } from "@/lib/supabase";
 import { dbSync } from "@/lib/dbSync";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,7 +132,7 @@ export default function SessionReviewPage() {
           const allLocalResults = (typeof window !== "undefined" && localStorage.getItem("synced_exam_results")) 
             ? JSON.parse(localStorage.getItem("synced_exam_results") || "[]") 
             : [];
-          const found = allLocalResults.find((r: any) => r.user_id === sessionData.user_id && r.exam_id === sessionData.exam_id);
+          const found = allLocalResults.find((r: any) => toSafeUUID(r.user_id) === toSafeUUID(sessionData.user_id) && toSafeUUID(r.exam_id) === toSafeUUID(sessionData.exam_id));
           if (found) {
             result = found;
           }

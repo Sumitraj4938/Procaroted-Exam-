@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, generateUUID, toSafeUUID } from "@/lib/supabase";
 
 export interface DBUser {
   id: string;
@@ -118,7 +118,7 @@ export const dbSync = {
   },
 
   async addUser(newUser: Omit<DBUser, "id">): Promise<DBUser> {
-    const id = "usr_" + Math.random().toString(36).substring(4);
+    const id = generateUUID();
     const userWithId: DBUser = {
       ...newUser,
       id,

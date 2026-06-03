@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore, useExamStore } from "@/store";
-import { supabase } from "@/lib/supabase";
+import { supabase, toSafeUUID } from "@/lib/supabase";
 import { dbSync } from "@/lib/dbSync";
 import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,39 @@ export default function ExamScreen() {
   const webcamRef2 = useRef<Webcam>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const consecutiveScreenshotFailures = useRef<number>(0);
+  const activeSessionIdRef = useRef<string | null>(null);
+
+  // Pre-fetch or restore session ID mapping to ensure robust telemetry
+  useEffect(() => {
+    const restoreSession = async () => {
+      if (user && params.id) {
+        try {
+          const safeUserId = toSafeUUID(user.id);
+          const safeExamId = toSafeUUID(params.id as string);
+          
+          const { data } = await supabase
+            .from("exam_sessions")
+            .select("id")
+            .eq("user_id", safeUserId)
+            .eq("exam_id", safeExamId)
+            .maybeSingle();
+            
+          if (data?.id) {
+            activeSessionIdRef.current = data.id;
+            console.log("Restored active session ID on mount/reload:", data.id);
+          } else {
+            // Predictively pre-assign it deterministically
+            activeSessionIdRef.current = toSafeUUID(`${user.id}_${params.id}`);
+            console.log("Pre-assigned deterministic session ID on mount/reload:", activeSessionIdRef.current);
+          }
+        } catch (err) {
+          console.warn("Failed to pre-fetch active session ID:", err);
+          activeSessionIdRef.current = toSafeUUID(`${user.id}_${params.id}`);
+        }
+      }
+    };
+    restoreSession();
+  }, [user, params.id]);
 
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId1, setSelectedCameraId1] = useState<string>("");
@@ -274,10 +307,11 @@ export default function ExamScreen() {
   // Save violation details to Supabase database with screenshots
   const saveViolation = useCallback(async (type: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical', screenshot: string) => {
     try {
-      const sessionId = params.id as string;
-      if (!sessionId) return;
+      const examId = params.id as string;
+      if (!examId || !user) return;
 
-      console.log(`Saving violation to DB: ${type} - ${description} (${severity})`);
+      const sessionId = activeSessionIdRef.current || toSafeUUID(`${user.id}_${examId}`);
+      console.log(`Saving violation to DB for session ${sessionId}: ${type} - ${description} (${severity})`);
       
       const { error: insertError } = await supabase
         .from('violations')
@@ -318,7 +352,7 @@ export default function ExamScreen() {
     } catch (err) {
       console.error("Failed to save violation to Supabase:", err);
     }
-  }, [params.id, timeLeft]);
+  }, [params.id, timeLeft, user]);
 
   // Process live detector results
   const processProctoringAnalysis = useCallback(async (analysis: any, screenshot: string) => {
@@ -520,37 +554,62 @@ export default function ExamScreen() {
   const startExam = async () => {
     try {
       if (containerRef.current) {
-        await containerRef.current.requestFullscreen();
+        await containerRef.current.requestFullscreen().catch(() => {});
       }
 
       // Upsert the user session for this specific exam into Supabase
       if (user) {
         const examId = params.id as string;
+        const safeUserId = toSafeUUID(user.id);
+        const safeExamId = toSafeUUID(examId);
+
+        // Pre-ensure parent user exists in public DB
+        try {
+          await supabase.from('users').upsert({
+            id: safeUserId,
+            email: user.email,
+            password: "password",
+            role: "student",
+            full_name: user?.fullName || "Student"
+          }, { onConflict: 'id' });
+        } catch (uErr) {
+          console.warn("Failed to ensure user exists in public DB:", uErr);
+        }
+
+        // Pre-ensure parent exam exists in public DB
+        try {
+          await supabase.from('exams').upsert({
+            id: safeExamId,
+            title: examId === "exam-1" ? "Advanced Mathematics" : examId === "exam-2" ? "Computer Science 101" : "Physics Final",
+            description: "Secure, real-time proctored final assessment",
+            duration_minutes: 60,
+            start_time: new Date().toISOString()
+          }, { onConflict: 'id' });
+        } catch (eErr) {
+          console.warn("Failed to ensure exam exists in public DB:", eErr);
+        }
+
+        // Setup persistent deterministic session UUID
+        const deterministicSessionId = toSafeUUID(`${user.id}_${examId}`);
+        activeSessionIdRef.current = deterministicSessionId;
+
         const { data: existingSession } = await supabase
           .from('exam_sessions')
           .select('id')
-          .eq('user_id', user.id)
-          .eq('exam_id', examId)
+          .eq('id', deterministicSessionId)
           .maybeSingle();
 
-        let sessionId = existingSession?.id;
-
-        if (!sessionId) {
-          const { data: newSession } = await supabase
+        if (!existingSession) {
+          await supabase
             .from('exam_sessions')
             .insert({
-              user_id: user.id,
-              exam_id: examId,
+              id: deterministicSessionId,
+              user_id: safeUserId,
+              exam_id: safeExamId,
               status: 'in_progress',
               started_at: new Date().toISOString(),
               cheating_score: 0
-            })
-            .select('id')
-            .single();
-          
-          if (newSession) {
-            sessionId = newSession.id;
-          }
+            });
         } else {
           await supabase
             .from('exam_sessions')
@@ -559,7 +618,7 @@ export default function ExamScreen() {
               started_at: new Date().toISOString(),
               cheating_score: 0
             })
-            .eq('id', sessionId);
+            .eq('id', deterministicSessionId);
         }
       }
 
@@ -568,7 +627,7 @@ export default function ExamScreen() {
       setCameraActive(true);
     } catch (err) {
       console.warn("Fullscreen permission or Supabase sync error, starting sandbox exam", err);
-      // Perfect offline-fallback fallback
+      // Perfect offline fallback
       setExamStarted(true);
       setExamActive(true);
       setCameraActive(true);
@@ -589,6 +648,7 @@ export default function ExamScreen() {
     try {
       if (user) {
         const examId = params.id as string;
+        const sessionId = activeSessionIdRef.current || toSafeUUID(`${user.id}_${examId}`);
 
         // Calculate dynamic results & score
         let correctCount = 0;
@@ -608,7 +668,7 @@ export default function ExamScreen() {
 
         // Save progress, answers, and score in db sync layer
         await dbSync.saveAnswersAndResult(
-          examId, // using examId as key for matching path params.id inside session review page
+          sessionId, 
           user.id,
           examId,
           mappedAnswers,
@@ -621,8 +681,7 @@ export default function ExamScreen() {
             status: 'completed',
             completed_at: new Date().toISOString()
           })
-          .eq('user_id', user.id)
-          .eq('exam_id', examId);
+          .eq('id', sessionId);
       }
     } catch (err) {
       console.error("Failed to mark exam as completed in Supabase:", err);
