@@ -134,9 +134,9 @@ export async function POST(req: NextRequest) {
         "The first image represents the student's frontal/face camera (Primary Cam). " +
         "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) viewing the student and their desk/hands. " +
         "Provide a comprehensive proctor analysis and adhere strictly to these critical requirements:\n\n" +
-        "1. STUDENT RECOGNITION: Confirm if the student's face is clearly visible, well-lit, and recognizable, and check for student identity consistency.\n" +
+        "1. STUDENT RECOGNITION & MULTIPLE PEOPLE CHECK:\n" +
+        "   - MULTIPLE FACES/PEOPLE DETECTED: You are an extremely strict security proctor. If there is more than one person, face, or partial human face visible in the frame (including background people, anyone standing or sitting next to or behind the student, or looking over their shoulder), you MUST count ALL of them. If 2 profile outlines or faces are present, set faces_detected to 2 or more, and set student_recognized to false. Always add 'Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.' to the warnings list.\n" +
         "   - FACE IN DARK / NOT CLEARLY SEEN: If the student's face is in deep shadow, too dark to be distinguished, blurry, covered, or not visible in Camera 1, or if Camera 1 is completely black, blank, or covered, you MUST set faces_detected to 0 and student_recognized to false.\n" +
-        "   - MULTIPLE FACES DETECTED: If there is more than one face visible in the frame (e.g., background people or someone sitting next to the student), you MUST count all of them. Set faces_detected to 2 or more, and set student_recognized to false.\n" +
         "2. DESK OBJECTS: Identify and list all visible objects on the desk/workspace (such as pen, paper, notebook, calculator, phone, bottle, secondary monitor).\n" +
         "3. HAND OBJECTS: Identify and list any objects currently in the student's hands in real-time.\n" +
         "4. ALERTS: Generate specific warning strings if unauthorized materials like smartphones, tablets, reference books, or cheat sheets are found on the desk, in hands, or within reach.\n" +
@@ -180,10 +180,35 @@ export async function POST(req: NextRequest) {
     }
     const data = JSON.parse(resultText);
 
-    // If Eden AI Face Detection is successful, override the face detection fields
+    // Reconcile Gemini and Eden AI results so that we never hide multiple faces or missed detections
     if (edenAIFaceData) {
-      data.faces_detected = edenAIFaceData.faces_detected;
-      data.student_recognized = edenAIFaceData.student_recognized;
+      const geminiFaces = typeof data.faces_detected === "number" ? data.faces_detected : 1;
+      const edenFaces = edenAIFaceData.faces_detected;
+
+      // Take the safe maximum number of faces detected across both models to maximize security coverage
+      data.faces_detected = Math.max(geminiFaces, edenFaces);
+
+      if (data.faces_detected > 1) {
+        data.student_recognized = false;
+        
+        // Ensure there is a multiple faces warning
+        if (!data.warnings) data.warnings = [];
+        const hasMultiFaceWarn = data.warnings.some((w: string) => 
+          w.toLowerCase().includes("multiple faces") || 
+          w.toLowerCase().includes("more than one person") ||
+          w.toLowerCase().includes("extra person")
+        );
+        if (!hasMultiFaceWarn) {
+          data.warnings.push("Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.");
+        }
+      } else {
+        // If only 1 face is detected, respect the recognized status but avoid false "no face" alerts from Eden AI when Gemini can clearly see 1 face
+        if (edenFaces === 0 && geminiFaces === 1) {
+          data.faces_detected = 1;
+        } else {
+          data.student_recognized = data.student_recognized && edenAIFaceData.student_recognized;
+        }
+      }
     }
 
     return NextResponse.json(data);
