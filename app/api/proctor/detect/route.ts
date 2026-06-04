@@ -132,26 +132,24 @@ export async function POST(req: NextRequest) {
         ...contents,
         "Analyze these webcam frames captured during an online proctored exam. " +
         "The first image represents the student's frontal/face camera (Primary Cam). " +
-        "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) viewing the student and their desk/hands. " +
-        "Provide a comprehensive proctor analysis and adhere strictly to these critical requirements:\n\n" +
-        "1. STUDENT RECOGNITION & MULTIPLE PEOPLE CHECK:\n" +
-        "   - MULTIPLE FACES/PEOPLE DETECTED: You are an extremely strict security proctor. If there is more than one person, face, or partial human face visible in the frame (including background people, anyone standing or sitting next to or behind the student, or looking over their shoulder), you MUST count ALL of them. If 2 profile outlines or faces are present, set faces_detected to 2 or more, and set student_recognized to false. Always add 'Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.' to the warnings list.\n" +
-        "   - FACE IN DARK / NOT CLEARLY SEEN: If the student's face is in deep shadow, too dark to be distinguished, blurry, covered, or not visible in Camera 1, or if Camera 1 is completely black, blank, or covered, you MUST set faces_detected to 0 and student_recognized to false.\n" +
-        "2. DESK OBJECTS: Identify and list all visible objects on the desk/workspace (such as pen, paper, notebook, calculator, phone, bottle, secondary monitor).\n" +
-        "3. HAND OBJECTS: Identify and list any objects currently in the student's hands in real-time.\n" +
-        "4. ALERTS: Generate specific warning strings if unauthorized materials like smartphones, tablets, reference books, or cheat sheets are found on the desk, in hands, or within reach.\n" +
-        "5. EXCESSIVE MOVEMENT: Detect any excessive physical body or rapid/repeated head/shoulder movements or extreme restlessness that could indicate cheating or looking at external aids."
+        "The second image (if provided) represents a secondary/side-angle environment camera (Secondary Cam) viewing the student and their desk/hands.\n\n" +
+        "CRITICAL SECURITY AUDIT FOR MULTIPLE PEOPLE:\n" +
+        "1. Carefully scan the entire primary camera frame AND the secondary camera frame (if active) for any other humans, faces, heads, hair, shoulders, arms, hands, bodies, profile outlines, or silhouettes.\n" +
+        "2. If there are TWO or more distinct human faces, partial faces, or distinct people/bodies present inside ANY of the webcam frames (e.g. background helpers, side-by-side friends, or people leaning into view), you MUST immediately set faces_detected to 2 or more, and set student_recognized to false.\n" +
+        "3. Always add a warning string stating: 'Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.' if more than 1 person is detected.\n" +
+        "4. If the student's face is completely obscured, dark, blur, or missing, set faces_detected to 0."
       ],
       config: {
+        systemInstruction: "You are an extremely strict, paranoid AI Exam Proctor security auditor. Your single most critical priority is finding cheating assistants, secondary people, or unauthorized help. You must examine every pixel of the webcam frames. If there is even a faint or partial presence of an extra person (friend, parent, helper, teacher, outline, shoulder, head, half-face) in the camera frame or background, you MUST count it. If 2 or more people/faces appear in any frame, set faces_detected to 2 or more, set student_recognized to false, and raise a multiple faces warning.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            faces_detected: { type: Type.INTEGER, description: "Number of full or partial faces detected" },
+            faces_detected: { type: Type.INTEGER, description: "Number of full or partial faces detected in the frame" },
             head_movement: { type: Type.STRING, description: "One of: normal, looking_left, looking_right, looking_up, looking_down" },
             eye_gaze: { type: Type.STRING, description: "One of: center, left, right" },
-            student_recognized: { type: Type.BOOLEAN, description: "True if the student is verified and recognized, false if identity mismatch or face missing" },
-            excessive_movement: { type: Type.BOOLEAN, description: "True if the student is showing excessive, suspicious, or rapid body/head/shoulder movement, shifting excessively, or moving constantly in an unauthorized manner" },
+            student_recognized: { type: Type.BOOLEAN, description: "True if only the single authorized student is present and verified, false if identity mismatch or multiple faces/people are detected" },
+            excessive_movement: { type: Type.BOOLEAN, description: "True if the student is showing excessive, suspicious, or rapid body/head/shoulder movement, shifting excessively" },
             desk_objects: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
