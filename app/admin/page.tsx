@@ -93,9 +93,11 @@ export default function AdminDashboard() {
   ];
 
   // Load and refresh functions
-  const fetchSessions = async () => {
+  const fetchSessions = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
 
       // 1. Fetch all student accounts (db + local cache)
       let allUsers: DBUser[] = [];
@@ -310,13 +312,13 @@ export default function AdminDashboard() {
     const channel = supabase
       .channel('public:exam_sessions')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_sessions' }, payload => {
-        fetchSessions(); 
+        fetchSessions(true); 
       })
       .subscribe();
 
     // Quick polling fallback for sandboxed environments where websockets are unstable
     const pollInterval = setInterval(() => {
-      fetchSessions();
+      fetchSessions(true);
     }, 2500);
 
     return () => {
