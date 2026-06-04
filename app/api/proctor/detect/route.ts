@@ -180,35 +180,46 @@ export async function POST(req: NextRequest) {
     }
     const data = JSON.parse(resultText);
 
-    // Reconcile Gemini and Eden AI results so that we never hide multiple faces or missed detections
+    // 1. Reconcile Gemini and Eden AI results so that we never hide multiple faces or missed detections
+    const geminiFaces = typeof data.faces_detected === "number" ? data.faces_detected : 1;
+    let finalFaces = geminiFaces;
+    let finalStudentRecognized = data.student_recognized !== false;
+
     if (edenAIFaceData) {
-      const geminiFaces = typeof data.faces_detected === "number" ? data.faces_detected : 1;
       const edenFaces = edenAIFaceData.faces_detected;
-
       // Take the safe maximum number of faces detected across both models to maximize security coverage
-      data.faces_detected = Math.max(geminiFaces, edenFaces);
+      finalFaces = Math.max(geminiFaces, edenFaces);
 
-      if (data.faces_detected > 1) {
-        data.student_recognized = false;
-        
-        // Ensure there is a multiple faces warning
-        if (!data.warnings) data.warnings = [];
-        const hasMultiFaceWarn = data.warnings.some((w: string) => 
-          w.toLowerCase().includes("multiple faces") || 
-          w.toLowerCase().includes("more than one person") ||
-          w.toLowerCase().includes("extra person")
-        );
-        if (!hasMultiFaceWarn) {
-          data.warnings.push("Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.");
-        }
-      } else {
-        // If only 1 face is detected, respect the recognized status but avoid false "no face" alerts from Eden AI when Gemini can clearly see 1 face
+      // If only 1 face is detected, respect the recognized status but avoid false "no face" alerts from Eden AI when Gemini can clearly see 1 face
+      if (finalFaces === 1) {
         if (edenFaces === 0 && geminiFaces === 1) {
-          data.faces_detected = 1;
+          // Keep face count as 1, trust Gemini's detection
         } else {
-          data.student_recognized = data.student_recognized && edenAIFaceData.student_recognized;
+          finalStudentRecognized = finalStudentRecognized && edenAIFaceData.student_recognized;
         }
       }
+    }
+
+    // 2. Assign reconciled values back to the returned data structure
+    data.faces_detected = finalFaces;
+
+    // 3. Strictest security check for multiple faces (applied universally, even if Eden AI was offline or skipped)
+    if (data.faces_detected > 1) {
+      data.student_recognized = false;
+      
+      // Ensure there is a highly visible multiple faces warning
+      if (!data.warnings) data.warnings = [];
+      const hasMultiFaceWarn = data.warnings.some((w: string) => 
+        w.toLowerCase().includes("multiple") || 
+        w.toLowerCase().includes("more than one") ||
+        w.toLowerCase().includes("extra person") ||
+        w.toLowerCase().includes("authorized student")
+      );
+      if (!hasMultiFaceWarn) {
+        data.warnings.push("Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.");
+      }
+    } else {
+      data.student_recognized = finalStudentRecognized;
     }
 
     return NextResponse.json(data);
