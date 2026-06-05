@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Script from "next/script";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore, useExamStore } from "@/store";
@@ -73,6 +74,33 @@ const checkIsImageBlockedOrBlack = (base64Str: string): Promise<boolean> => {
   });
 };
 
+const countFacesClientSide = (base64Image: string): Promise<number> => {
+  return new Promise((resolve) => {
+    if (!base64Image || typeof window === "undefined" || !(window as any).faceapi) {
+      resolve(1); // Default to 1 to be cautious
+      return;
+    }
+    const faceapi = (window as any).faceapi;
+    const img = document.createElement("img");
+    img.src = base64Image;
+    img.onload = async () => {
+      try {
+        const detections = await faceapi.detectAllFaces(
+          img,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 })
+        );
+        resolve(detections.length);
+      } catch (err) {
+        console.error("Error running face-api client-side:", err);
+        resolve(1);
+      }
+    };
+    img.onerror = () => {
+      resolve(1);
+    };
+  });
+};
+
 export default function ExamScreen() {
   const router = useRouter();
   const params = useParams();
@@ -96,6 +124,8 @@ export default function ExamScreen() {
   const [ambientLightStatus, setAmbientLightStatus] = useState<"checking" | "dark" | "optimal" | "bright">("checking");
   const [lightFeedback, setLightFeedback] = useState<string>("Analyzing room lighting via Face Camera...");
   const [micFeedback, setMicFeedback] = useState<string>("Awaiting microphone permission...");
+  const [faceApiLoaded, setFaceApiLoaded] = useState(false);
+  const [clientFaceCountFeedback, setClientFaceCountFeedback] = useState<string>("Initializing offline face recognition guard rails...");
 
   // Load saved progress from localStorage if it exists on mount
   useEffect(() => {
@@ -695,6 +725,18 @@ export default function ExamScreen() {
           secondary: screenshot2
         });
 
+        // Run local face-api.js offline face detector in parallel with other checks
+        let clientSideFaces1 = 1;
+        let clientSideFaces2 = 0;
+
+        if (faceApiLoaded) {
+          clientSideFaces1 = await countFacesClientSide(screenshot1);
+          if (screenshot2 && !screenshot2.startsWith("http")) {
+            clientSideFaces2 = await countFacesClientSide(screenshot2);
+          }
+          console.log(`[Face Detection Check] Primary: ${clientSideFaces1}, Secondary: ${clientSideFaces2}`);
+        }
+
         // Run client-side dark/covered camera blackout check to instantly raise alarm & save bandwidth
         const isCamera1Blocked = await checkIsImageBlockedOrBlack(screenshot1);
         if (isCamera1Blocked) {
@@ -719,24 +761,48 @@ export default function ExamScreen() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ image: screenshot1, image2: screenshot2 }),
+          body: JSON.stringify({ 
+            image: screenshot1, 
+            image2: screenshot2,
+            clientFaces: clientSideFaces1,
+            clientFaces2: clientSideFaces2
+          }),
         });
 
         if (response.ok) {
           const analysisResult = await response.json();
+          
+          // Reconcile and override with client-side detection to enforce strict multiple-face limits instantly
+          if (faceApiLoaded) {
+            const maxClientFaces = Math.max(clientSideFaces1, clientSideFaces2);
+            if (maxClientFaces > 1) {
+              analysisResult.faces_detected = Math.max(analysisResult.faces_detected || 0, maxClientFaces);
+              analysisResult.student_recognized = false;
+              if (!analysisResult.warnings) analysisResult.warnings = [];
+              if (!analysisResult.warnings.some((w: string) => w.toLowerCase().includes("multiple"))) {
+                analysisResult.warnings.push("Multiple faces detected in the camera frame! Only the authorized student is permitted to be present.");
+              }
+            } else if (clientSideFaces1 === 0 && !isCamera1Blocked) {
+              analysisResult.faces_detected = 0;
+            }
+          }
+
           await processProctoringAnalysis(analysisResult, compositeScreenshot);
         } else {
-          // If server fails or rate limit hits, do not let them bypass face checking. Treat as face missing (faces_detected: 0) to raise alarm.
-          console.warn("Proctoring API returned failure status. Running unverified camera safety fallback.");
+          // If server fails, run local fallback with the client-side face-api count! Keep verifying the student!
+          console.warn("Proctoring API returned failure status. Running local Face-API fallback.");
+          const maxClientFaces = Math.max(clientSideFaces1, clientSideFaces2);
           const fallbackAnalysis = {
-            faces_detected: 0,
+            faces_detected: faceApiLoaded ? maxClientFaces : 0,
             head_movement: "normal",
             eye_gaze: "center",
-            student_recognized: false,
+            student_recognized: faceApiLoaded ? (maxClientFaces === 1) : false,
             excessive_movement: false,
             desk_objects: [],
             hand_objects: [],
-            warnings: ["Camera feed analysis failed to secure response! Please ensure your internet is stable and camera unblocked."]
+            warnings: faceApiLoaded && maxClientFaces > 1 
+              ? ["Multiple faces detected in the camera frame! Only the authorized student is permitted to be present."]
+              : ["Camera feed analysis failed to secure response! Please ensure your internet is stable and camera unblocked."]
           };
           await processProctoringAnalysis(fallbackAnalysis, compositeScreenshot);
         }
@@ -1120,6 +1186,57 @@ export default function ExamScreen() {
                     </div>
                   </div>
                 </div>
+
+                {/* Client Side Face Detection (MediaPipe/Face-api.js) Integrity Guard Info */}
+                <div className="mt-3 bg-indigo-50/50 border border-indigo-100/50 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-3xs">
+                  <div className="flex items-start gap-2.5">
+                    <UserCheck className={`w-4 h-4 mt-0.5 sm:mt-0 ${faceApiLoaded ? 'text-indigo-600 animate-pulse' : 'text-slate-400'}`} />
+                    <div>
+                      <h5 className="text-[11px] font-bold text-indigo-900 uppercase tracking-wide">🧠 Real-Time Client Face Recognition (MediaPipe/Face-api.js)</h5>
+                      <p className="text-[10px] text-indigo-700/80 leading-relaxed font-semibold">
+                        {clientFaceCountFeedback}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 self-end sm:self-auto">
+                    {faceApiLoaded ? (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-indigo-700 bg-indigo-50 border border-indigo-200">
+                        Shield Active
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-slate-500 bg-slate-50 border border-slate-100 animate-pulse">
+                        Warming Up
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <Script
+                  src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"
+                  strategy="lazyOnload"
+                  onLoad={async () => {
+                    console.log("face-api.js Script loaded successfully.");
+                    setClientFaceCountFeedback("Script loaded. Loading face detection model weights from high-speed CDN...");
+                    try {
+                      const faceapi = (window as any).faceapi;
+                      if (faceapi) {
+                        await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/");
+                        console.log("Tiny Face Detector model loaded.");
+                        setFaceApiLoaded(true);
+                        setClientFaceCountFeedback("Offline face recognition shield successfully armed!");
+                      } else {
+                        setClientFaceCountFeedback("Failed to activate local shield: library wrapper missing.");
+                      }
+                    } catch (err) {
+                      console.error("Local face detector weights init failed:", err);
+                      setClientFaceCountFeedback("Offline shield standby: using standard server-side detection fallback.");
+                    }
+                  }}
+                  onError={() => {
+                    console.error("Failed to load face-api.js Script from CDN.");
+                    setClientFaceCountFeedback("Offline shield standby: using secondary server-side detection fallback.");
+                  }}
+                />
               </div>
 
               {/* Actionable Diagnostics Notifications Box */}

@@ -88,7 +88,7 @@ async function callEdenAIFaceDetection(base64Image: string): Promise<{ faces_det
 
 export async function POST(req: NextRequest) {
   try {
-    const { image, image2 } = await req.json();
+    const { image, image2, clientFaces, clientFaces2 } = await req.json();
     if (!image) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
@@ -178,15 +178,19 @@ export async function POST(req: NextRequest) {
     }
     const data = JSON.parse(resultText);
 
-    // 1. Reconcile Gemini and Eden AI results so that we never hide multiple faces or missed detections
+    // 1. Reconcile Gemini, Eden AI, and local Client Face-API results so we never hide multiple faces
+    let maxClientFaces = 0;
+    if (typeof clientFaces === "number") maxClientFaces = Math.max(maxClientFaces, clientFaces);
+    if (typeof clientFaces2 === "number") maxClientFaces = Math.max(maxClientFaces, clientFaces2);
+
     const geminiFaces = typeof data.faces_detected === "number" ? data.faces_detected : 1;
-    let finalFaces = geminiFaces;
-    let finalStudentRecognized = data.student_recognized !== false;
+    let finalFaces = Math.max(geminiFaces, maxClientFaces);
+    let finalStudentRecognized = data.student_recognized !== false && maxClientFaces <= 1;
 
     if (edenAIFaceData) {
       const edenFaces = edenAIFaceData.faces_detected;
-      // Take the safe maximum number of faces detected across both models to maximize security coverage
-      finalFaces = Math.max(geminiFaces, edenFaces);
+      // Take the safe maximum number of faces detected across all models to maximize security coverage
+      finalFaces = Math.max(finalFaces, edenFaces);
 
       // If only 1 face is detected, respect the recognized status but avoid false "no face" alerts from Eden AI when Gemini can clearly see 1 face
       if (finalFaces === 1) {
