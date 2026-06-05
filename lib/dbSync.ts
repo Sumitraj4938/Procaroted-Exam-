@@ -423,5 +423,146 @@ export const dbSync = {
   getStudentResults(userId: string): DBResult[] {
     const results = getLocalItem("synced_exam_results") as DBResult[];
     return results.filter((r) => r.user_id === userId);
+  },
+
+  getDefaultQuestionsForExam(examId: string): { id: number; text: string; options: string[]; correct_option: number }[] {
+    const normalized = (examId || "").toLowerCase();
+    
+    if (normalized.includes("exam-1") || normalized.includes("7fd001") || normalized.toLowerCase().includes("mathematics") || normalized.includes("math")) {
+      return [
+        { id: 1, text: "What is the limit of (sin x) / x as x approaches 0?", options: ["0", "1", "Infinity", "Undefined"], correct_option: 1 },
+        { id: 2, text: "Which of the following describes the eigenvalues of a symmetric matrix?", options: ["Always real", "Always complex", "Always zero", "Always positive"], correct_option: 0 },
+        { id: 3, text: "What is the derivative of e^(3x) with respect to x?", options: ["e^(3x)", "3 * e^(3x)", "(1/3) * e^(3x)", "3x * e^(3x-1)"], correct_option: 1 },
+        { id: 4, text: "What is the value of the definite integral of 2x dx from x = 0 to x = 3?", options: ["3", "6", "9", "12"], correct_option: 2 },
+        { id: 5, text: "Which theorem states that for a continuous function on [a, b], there is at least one point c where f'(c) equals the average rate of change?", options: ["Intermediate Value Theorem", "Mean Value Theorem", "Rolle's Theorem", "Taylor's Theorem"], correct_option: 1 },
+      ];
+    }
+    
+    if (normalized.includes("exam-2") || normalized.includes("7fd002") || normalized.toLowerCase().includes("computer") || normalized.includes("cs")) {
+      return [
+        { id: 1, text: "What is the typical time complexity of binary search on a sorted array?", options: ["O(n)", "O(log n)", "O(n log n)", "O(1)"], correct_option: 1 },
+        { id: 2, text: "Which data structure follows the Last-In-First-Out (LIFO) order?", options: ["Queue", "Tree", "Stack", "Priority Queue"], correct_option: 2 },
+        { id: 3, text: "What does HTTP stand for in web technology?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HighTransfer Text Protocol"], correct_option: 0 },
+        { id: 4, text: "Which of the following is a non-relational (NoSQL) database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle SQL"], correct_option: 2 },
+        { id: 5, text: "What is the main purpose of an 'index' in a relational database?", options: ["To encrypt sensitive user passwords", "To speed up data retrieval operations", "To store redundant copies of tables", "To design custom front-end tables"], correct_option: 1 },
+      ];
+    }
+
+    if (normalized.includes("exam-3") || normalized.includes("7fd003") || normalized.toLowerCase().includes("physics")) {
+      return [
+        { id: 1, text: "What is the approximate value of acceleration due to gravity on the surface of Earth?", options: ["9.8 m/s^2", "1.6 m/s^2", "3.0 x 10^8 m/s^2", "98 m/s^2"], correct_option: 0 },
+        { id: 2, text: "Which instrument is used to measure electrical current in a circuit?", options: ["Voltmeter", "Ammeter", "Barometer", "Thermometer"], correct_option: 1 },
+        { id: 3, text: "What is the first law of thermodynamics concerned with?", options: ["Entropy generation", "Conservation of energy", "Absolute zero temperature", "Thermal radiation"], correct_option: 1 },
+        { id: 4, text: "What is the speed of light in a vacuum approximately?", options: ["300,000 km/s", "150,000 km/s", "1,000 km/s", "3,000 km/s"], correct_option: 0 },
+        { id: 5, text: "In physics, what does a red-shift in light from distant stars indicate?", options: ["The star is moving closer to Earth", "The star is moving away from Earth", "The star is shrinking in size", "The star is increasing in surface temperature"], correct_option: 1 },
+      ];
+    }
+
+    if (normalized.includes("exam-4") || normalized.includes("7fd004") || normalized.toLowerCase().includes("chemistry")) {
+      return [
+        { id: 1, text: "What is the chemical symbol for the element Gold?", options: ["Ag", "Au", "Gd", "Fe"], correct_option: 1 },
+        { id: 2, text: "What is the pH level of pure distilled water at room temperature?", options: ["5", "7", "9", "12"], correct_option: 1 },
+        { id: 3, text: "Which of the following is the lightest chemical element in the periodic table?", options: ["Helium", "Hydrogen", "Lithium", "Oxygen"], correct_option: 1 },
+        { id: 4, text: "What type of chemical bond involves the sharing of electron pairs between atoms?", options: ["Ionic Bond", "Covalent Bond", "Hydrogen Bond", "Metallic Bond"], correct_option: 1 },
+        { id: 5, text: "Which gas is most abundant of all in the Earth's atmosphere?", options: ["Oxygen", "Carbon Dioxide", "Nitrogen", "Argon"], correct_option: 2 },
+      ];
+    }
+
+    if (normalized.includes("exam-5") || normalized.includes("7fd005") || normalized.toLowerCase().includes("geography")) {
+      return [
+        { id: 1, text: "Which of the following is the most populous country in the world currently?", options: ["United States", "India", "China", "Indonesia"], correct_option: 1 },
+        { id: 2, text: "What is the term for the process of people moving from rural areas to cities?", options: ["Defragmentation", "Urbanization", "Industrialization", "Immigration"], correct_option: 1 },
+        { id: 3, text: "Which imaginary line divides the Earth into the Northern and Southern Hemispheres?", options: ["Prime Meridian", "Equator", "Tropic of Cancer", "International Date Line"], correct_option: 1 },
+        { id: 4, text: "What is the primary cause of the greenhouse effect on Earth?", options: ["Chlorofluorocarbons depletion", "Trapping of solar radiation by atmospheric gases", "Ozone hole enlargement", "Aerosol spray pollution"], correct_option: 1 },
+        { id: 5, text: "Which continent is home to the largest hot desert on Earth, the Sahara?", options: ["Asia", "Africa", "South America", "Australia"], correct_option: 1 },
+      ];
+    }
+
+    // Default CS fallback questions
+    return [
+      { id: 1, text: "What is the typical time complexity of binary search on a sorted array?", options: ["O(n)", "O(log n)", "O(n log n)", "O(1)"], correct_option: 1 },
+      { id: 2, text: "Which data structure follows the Last-In-First-Out (LIFO) order?", options: ["Queue", "Tree", "Stack", "Priority Queue"], correct_option: 2 },
+      { id: 3, text: "What does HTTP stand for in web technology?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HighTransfer Text Protocol"], correct_option: 0 },
+      { id: 4, text: "Which of the following is a non-relational (NoSQL) database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle SQL"], correct_option: 2 },
+      { id: 5, text: "What is the main purpose of an 'index' in a relational database?", options: ["To encrypt sensitive user passwords", "To speed up data retrieval operations", "To store redundant copies of tables", "To design custom front-end tables"], correct_option: 1 },
+    ];
+  },
+
+  async ensureDefaultExamsAndQuestions(): Promise<void> {
+    try {
+      const { data: existingExams, error: examsErr } = await supabase
+        .from("exams")
+        .select("id, title");
+
+      if (examsErr) {
+        console.warn("Could not query existing exams to verify seeding:", examsErr);
+        return;
+      }
+
+      const defaultExamsData = [
+        { id: "3491ebca-82ca-49a6-be5e-6fa2377fd001", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60 },
+        { id: "3491ebca-82ca-49a6-be5e-6fa2377fd002", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90 },
+        { id: "3491ebca-82ca-49a6-be5e-6fa2377fd003", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120 },
+        { id: "3491ebca-82ca-49a6-be5e-6fa2377fd004", title: "Chemistry Basics", description: "Foundational chemistry topics including stoichiometry and atomic structures.", duration_minutes: 75 },
+        { id: "3491ebca-82ca-49a6-be5e-6fa2377fd005", title: "Human Geography", description: "Explores human activity, population patterns, and global ecosystems.", duration_minutes: 60 }
+      ];
+
+      for (const defExam of defaultExamsData) {
+        const existsInDb = existingExams?.some((e) => e.id === defExam.id || e.title.toLowerCase() === defExam.title.toLowerCase());
+        
+        if (!existsInDb) {
+          console.log(`Seeding missing exam: ${defExam.title}`);
+          const { error: insertExamErr } = await supabase
+            .from("exams")
+            .insert({
+              id: defExam.id,
+              title: defExam.title,
+              description: defExam.description,
+              duration_minutes: defExam.duration_minutes,
+              start_time: new Date().toISOString()
+            });
+
+          if (!insertExamErr) {
+            const qList = this.getDefaultQuestionsForExam(defExam.id);
+            for (const q of qList) {
+              await supabase
+                .from("questions")
+                .insert({
+                  exam_id: defExam.id,
+                  question_text: q.text,
+                  options: q.options,
+                  correct_option: q.correct_option,
+                  points: 1
+                });
+            }
+          } else {
+            console.warn(`Failed to seed exam ${defExam.title}:`, insertExamErr.message);
+          }
+        } else {
+          const { data: qs, error: qsErr } = await supabase
+            .from("questions")
+            .select("id")
+            .eq("exam_id", defExam.id);
+
+          if (!qsErr && (!qs || qs.length === 0)) {
+            console.log(`Seeding default questions for existing exam: ${defExam.title}`);
+            const qList = this.getDefaultQuestionsForExam(defExam.id);
+            for (const q of qList) {
+              await supabase
+                .from("questions")
+                .insert({
+                  exam_id: defExam.id,
+                  question_text: q.text,
+                  options: q.options,
+                  correct_option: q.correct_option,
+                  points: 1
+                });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Self-seeding routine experienced a non-blocking error:", err);
+    }
   }
 };

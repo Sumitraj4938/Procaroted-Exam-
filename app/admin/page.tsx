@@ -89,7 +89,9 @@ export default function AdminDashboard() {
   const defaultExams = [
     { id: "exam-1", title: "Advanced Mathematics" },
     { id: "exam-2", title: "Computer Science 101" },
-    { id: "exam-3", title: "Physics Final" }
+    { id: "exam-3", title: "Physics Final" },
+    { id: "exam-4", title: "Chemistry Basics" },
+    { id: "exam-5", title: "Human Geography" }
   ];
 
   // Load and refresh functions

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogOut, PlayCircle, CheckCircle, Clock, Loader2, Shield, FileText, Sparkles, Trophy } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { dbSync } from "@/lib/dbSync";
 
 interface Exam {
   id: string;
@@ -32,6 +33,9 @@ export default function StudentDashboard() {
 
     const fetchExams = async () => {
       try {
+        // Enforce auto-seeding of the 5 subjects and questions in the database
+        await dbSync.ensureDefaultExamsAndQuestions();
+
         // Fetch all exams
         const { data: allExams, error: examsError } = await supabase
           .from('exams')
@@ -62,6 +66,8 @@ export default function StudentDashboard() {
             { id: "3491ebca-82ca-49a6-be5e-6fa2377fd001", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60, start_time: new Date().toISOString(), status: "pending" },
             { id: "3491ebca-82ca-49a6-be5e-6fa2377fd002", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90, start_time: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
             { id: "3491ebca-82ca-49a6-be5e-6fa2377fd003", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120, start_time: new Date(Date.now() + 86400000).toISOString(), status: "pending" },
+            { id: "3491ebca-82ca-49a6-be5e-6fa2377fd004", title: "Chemistry Basics", description: "Foundational chemistry topics including stoichiometry and atomic structures.", duration_minutes: 75, start_time: new Date(Date.now() + 172800000).toISOString(), status: "pending" },
+            { id: "3491ebca-82ca-49a6-be5e-6fa2377fd005", title: "Human Geography", description: "Explores human activity, population patterns, and global ecosystems.", duration_minutes: 60, start_time: new Date(Date.now() + 259200000).toISOString(), status: "pending" },
           ]);
         } else {
           setExams(examsWithStatus);
@@ -73,6 +79,8 @@ export default function StudentDashboard() {
           { id: "3491ebca-82ca-49a6-be5e-6fa2377fd001", title: "Advanced Mathematics", description: "Final semester examination covering calculus and linear algebra.", duration_minutes: 60, start_time: new Date().toISOString(), status: "pending" },
           { id: "3491ebca-82ca-49a6-be5e-6fa2377fd002", title: "Computer Science 101", description: "Introduction to programming and data structures.", duration_minutes: 90, start_time: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
           { id: "3491ebca-82ca-49a6-be5e-6fa2377fd003", title: "Physics Final", description: "Comprehensive physics assessment.", duration_minutes: 120, start_time: new Date(Date.now() + 86400000).toISOString(), status: "pending" },
+          { id: "3491ebca-82ca-49a6-be5e-6fa2377fd004", title: "Chemistry Basics", description: "Foundational chemistry topics including stoichiometry and atomic structures.", duration_minutes: 75, start_time: new Date(Date.now() + 172800000).toISOString(), status: "pending" },
+          { id: "3491ebca-82ca-49a6-be5e-6fa2377fd005", title: "Human Geography", description: "Explores human activity, population patterns, and global ecosystems.", duration_minutes: 60, start_time: new Date(Date.now() + 259200000).toISOString(), status: "pending" },
         ]);
       } finally {
         setLoading(false);

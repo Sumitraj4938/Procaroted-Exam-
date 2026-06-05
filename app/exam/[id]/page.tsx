@@ -410,14 +410,7 @@ export default function ExamScreen() {
     };
   }, [examStarted, selectedCameraId1]);
 
-  const defaultQuestions = [
-    { id: 1, text: "What is the time complexity of binary search?", options: ["O(n)", "O(log n)", "O(n^2)", "O(1)"], correct_option: 1 },
-    { id: 2, text: "Which data structure uses LIFO?", options: ["Queue", "Tree", "Stack", "Graph"], correct_option: 2 },
-    { id: 3, text: "What does HTTP stand for?", options: ["HyperText Transfer Protocol", "HyperText Transmission Protocol", "HyperText Transfer Package", "HyperText Transmission Package"], correct_option: 0 },
-    { id: 4, text: "Which of the following is a NoSQL database?", options: ["MySQL", "PostgreSQL", "MongoDB", "Oracle"], correct_option: 2 },
-  ];
-
-  const [questions, setQuestions] = useState<any[]>(defaultQuestions);
+  const [questions, setQuestions] = useState<any[]>([]);
 
   // Load custom student assigned questions if available
   useEffect(() => {
@@ -435,11 +428,11 @@ export default function ExamScreen() {
             }));
             setQuestions(formatted);
           } else {
-            setQuestions(defaultQuestions);
+            setQuestions(dbSync.getDefaultQuestionsForExam(params.id as string));
           }
         } catch (err) {
           console.warn("Failed to load assigned questions from DB sync layer, using defaults", err);
-          setQuestions(defaultQuestions);
+          setQuestions(dbSync.getDefaultQuestionsForExam(params.id as string));
         }
       }
     };
@@ -884,11 +877,28 @@ export default function ExamScreen() {
 
         // Pre-ensure parent exam exists in public DB
         try {
+          const isExam1 = examId === "exam-1" || examId === "3491ebca-82ca-49a6-be5e-6fa2377fd001";
+          const isExam2 = examId === "exam-2" || examId === "3491ebca-82ca-49a6-be5e-6fa2377fd002";
+          const isExam3 = examId === "exam-3" || examId === "3491ebca-82ca-49a6-be5e-6fa2377fd003";
+          const isExam4 = examId === "exam-4" || examId === "3491ebca-82ca-49a6-be5e-6fa2377fd004";
+          const isExam5 = examId === "exam-5" || examId === "3491ebca-82ca-49a6-be5e-6fa2377fd005";
+
+          const currentTitle = isExam1 ? "Advanced Mathematics" :
+                               isExam2 ? "Computer Science 101" :
+                               isExam3 ? "Physics Final" :
+                               isExam4 ? "Chemistry Basics" :
+                               isExam5 ? "Human Geography" : "Special Assessment";
+
+          const currentDuration = isExam1 ? 60 :
+                                  isExam2 ? 90 :
+                                  isExam3 ? 120 :
+                                  isExam4 ? 75 : 60;
+
           await supabase.from('exams').upsert({
             id: safeExamId,
-            title: examId === "exam-1" ? "Advanced Mathematics" : examId === "exam-2" ? "Computer Science 101" : "Physics Final",
+            title: currentTitle,
             description: "Secure, real-time proctored final assessment",
-            duration_minutes: 60,
+            duration_minutes: currentDuration,
             start_time: new Date().toISOString()
           }, { onConflict: 'id' });
         } catch (eErr) {
@@ -1366,7 +1376,13 @@ export default function ExamScreen() {
         <div className="flex items-center gap-3">
           <Image src="/logo.png" alt="Logo" width={32} height={32} />
           <div>
-            <h1 className="text-lg font-semibold text-slate-800 leading-tight">Advanced Mathematics</h1>
+             <h1 className="text-lg font-semibold text-slate-800 leading-tight">
+               {params.id === "exam-1" || params.id === "3491ebca-82ca-49a6-be5e-6fa2377fd001" ? "Advanced Mathematics" :
+                params.id === "exam-2" || params.id === "3491ebca-82ca-49a6-be5e-6fa2377fd002" ? "Computer Science 101" :
+                params.id === "exam-3" || params.id === "3491ebca-82ca-49a6-be5e-6fa2377fd003" ? "Physics Final" :
+                params.id === "exam-4" || params.id === "3491ebca-82ca-49a6-be5e-6fa2377fd004" ? "Chemistry Basics" :
+                params.id === "exam-5" || params.id === "3491ebca-82ca-49a6-be5e-6fa2377fd005" ? "Human Geography" : "Special Assessment"}
+             </h1>
             <p className="text-xs text-slate-500">Candidate: {user?.fullName}</p>
           </div>
         </div>
